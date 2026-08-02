@@ -1900,7 +1900,18 @@ fn main() {
     let startup_home = match instance::resolve_startup_home() {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("Talminal startup failed: {e}");
+            // Samme fejlklasse som `AcquireOutcome::Failed` nedenfor, og derfor
+            // samme kanal. Grenen her skrev indtil OSS-fase 2 KUN `eprintln!`
+            // og kaldte `exit(1)` — i et release-byg uden konsol betoed det at
+            // appen forsvandt uden et ord, mens den anden gren tre snese linjer
+            // nede allerede brugte dialogen af praecis den grund. Det var ikke
+            // en afvejning; den ene gren blev bare ikke opdateret.
+            // `show_startup_error` er en ren Win32 `MessageBoxW` uden
+            // afhaengighed af Tauri-runtimen og kan derfor kaldes saa tidligt.
+            // (Fundet af Codex-fuldscanningen 2026-08-02.)
+            let message = format!("Talminal startup failed: {e}");
+            eprintln!("{message}");
+            show_startup_error(&message);
             std::process::exit(1);
         }
     };
