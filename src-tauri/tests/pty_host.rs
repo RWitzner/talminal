@@ -2,6 +2,31 @@
 // ConPTY-spikens harness): sentinel-assertions på ANSI-strippet output.
 // Venter ALDRIG på reader-EOF (FUND 11) — exit observeres via try_exit_status.
 // Testene kører parallelt; samtidige ConPTY'er er spike-bevist (FUND 9).
+//
+// OM DEADLINES I DENNE FIL (OSS-fase 2, 2026-08-03). Næsten alle
+// `Duration::from_secs(...)` her er HANG-VÆRN, ikke hastigheds-assertions:
+// de findes for at en brudt teardown fejler i stedet for at hænge suiten for
+// evigt. De siger derfor intet om hvad testen beviser, og de må gerne være
+// rundhåndede.
+//
+// De var det ikke, og det kostede to røde CI-kørsler på ting der ikke fejlede:
+//   * `teardown_drains_high_output_through_final_sentinel` (15 s) fældede et
+//     ritual, men kørte på 0,69 s isoleret — den fejler kun under fuld
+//     parallel load.
+//   * `teardown_waits_for_busy_reader_then_drains_buffered_tail` (5 s) fældede
+//     en CI-kørsel på "reader callback was not entered". Den spawner
+//     `powershell.exe`, og en KOLDSTART af PowerShell på en tokernet runner
+//     bruger let mere end 5 sekunder, før den første byte når frem.
+//
+// En gate der bliver rød uden en fejl, er en gate folk lærer at ignorere — og
+// så beskytter den ingenting. Værnene er derfor 30 s som standard, 60 s for de
+// to langsomste (høj-output-dræningen og PowerShell-koldstarten) og 180 s for
+// den blokerede callback, som pr. konstruktion skal kunne holdes længere end
+// alt hvad testen når imens.
+//
+// ÉN UNDTAGELSE, og den skal blive stående: `from_secs(20)` i
+// `kill_and_teardown_terminates_long_running_child` er ikke et værn — det ER
+// assertionen ("teardown må ALDRIG hænge"). Hæv den ikke.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -170,12 +195,12 @@ fn spawn_echo_sentinel_exit_and_teardown() {
         vec![],
     );
     assert!(
-        wait_for(&buf, "CANVAS-PTY-SMOKE-OK", Duration::from_secs(10)),
+        wait_for(&buf, "CANVAS-PTY-SMOKE-OK", Duration::from_secs(30)),
         "sentinel not seen; stripped output: {}",
         stripped(&buf)
     );
     assert!(
-        wait_exit(&host, Duration::from_secs(10)).is_some(),
+        wait_exit(&host, Duration::from_secs(30)).is_some(),
         "child exit not observed via try_exit_status"
     );
     assert_eq!(
@@ -197,17 +222,17 @@ fn spawn_echo_sentinel_exit_and_teardown() {
 fn write_reaches_child_and_output_flows_back() {
     let (host, buf) = spawn_collecting(vec![cmd_exe()], vec![]);
     assert!(
-        wait_for(&buf, ">", Duration::from_secs(10)),
+        wait_for(&buf, ">", Duration::from_secs(30)),
         "cmd prompt not seen"
     );
     host.write(b"echo PTY-WRITE-ROUNDTRIP-OK\r").expect("write");
     assert!(
-        wait_for(&buf, "PTY-WRITE-ROUNDTRIP-OK", Duration::from_secs(10)),
+        wait_for(&buf, "PTY-WRITE-ROUNDTRIP-OK", Duration::from_secs(30)),
         "roundtrip sentinel not seen; stripped output: {}",
         stripped(&buf)
     );
     host.write(b"exit\r").expect("write exit");
-    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
     host.kill_and_teardown().expect("teardown");
 }
 
@@ -215,19 +240,19 @@ fn write_reaches_child_and_output_flows_back() {
 fn resize_succeeds_and_child_survives() {
     let (host, buf) = spawn_collecting(vec![cmd_exe()], vec![]);
     assert!(
-        wait_for(&buf, ">", Duration::from_secs(10)),
+        wait_for(&buf, ">", Duration::from_secs(30)),
         "cmd prompt not seen"
     );
     host.resize(80, 24).expect("resize shrink");
     host.resize(200, 50).expect("resize grow");
     host.write(b"echo AFTER-RESIZE-OK\r").expect("write");
     assert!(
-        wait_for(&buf, "AFTER-RESIZE-OK", Duration::from_secs(10)),
+        wait_for(&buf, "AFTER-RESIZE-OK", Duration::from_secs(30)),
         "child dead or unresponsive after resize; stripped output: {}",
         stripped(&buf)
     );
     host.write(b"exit\r").expect("write exit");
-    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
     host.kill_and_teardown().expect("teardown");
 }
 
@@ -237,7 +262,7 @@ fn kill_and_teardown_terminates_long_running_child() {
     // drop master → join reader. Må aldrig hænge.
     let (host, buf) = spawn_collecting(vec![cmd_exe()], vec![]);
     assert!(
-        wait_for(&buf, ">", Duration::from_secs(10)),
+        wait_for(&buf, ">", Duration::from_secs(30)),
         "cmd prompt not seen"
     );
     let t0 = Instant::now();
@@ -279,7 +304,7 @@ fn sequenced_write_watermark_precedes_the_resulting_echo() {
         .iter()
         .any(|(_, byte)| *byte == b'>')
     {
-        assert!(prompt_started.elapsed() < Duration::from_secs(10));
+        assert!(prompt_started.elapsed() < Duration::from_secs(30));
         std::thread::sleep(Duration::from_millis(20));
     }
 
@@ -306,12 +331,12 @@ fn sequenced_write_watermark_precedes_the_resulting_echo() {
             );
             break;
         }
-        assert!(echo_started.elapsed() < Duration::from_secs(10));
+        assert!(echo_started.elapsed() < Duration::from_secs(30));
         std::thread::sleep(Duration::from_millis(20));
     }
 
     host.write(b"exit\r").expect("exit write");
-    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
     host.kill_and_teardown().expect("teardown");
 }
 
@@ -418,7 +443,7 @@ fn teardown_waits_for_busy_reader_then_drains_buffered_tail() {
                         .expect("release child to write buffered tail");
                     entered_tx.send(()).expect("announce blocked callback");
                     release_rx
-                        .recv_timeout(Duration::from_secs(15))
+                        .recv_timeout(Duration::from_secs(180))
                         .expect("release blocked callback");
                 }
             },
@@ -427,9 +452,9 @@ fn teardown_waits_for_busy_reader_then_drains_buffered_tail() {
     );
 
     entered_rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(Duration::from_secs(60))
         .expect("reader callback was not entered");
-    let marker_deadline = Instant::now() + Duration::from_secs(5);
+    let marker_deadline = Instant::now() + Duration::from_secs(30);
     while !marker_path.is_file() && Instant::now() < marker_deadline {
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -438,7 +463,7 @@ fn teardown_waits_for_busy_reader_then_drains_buffered_tail() {
         let _ = host.kill_and_teardown();
         panic!("child did not write the post-tail marker while callback was blocked");
     }
-    if wait_exit(&host, Duration::from_secs(5)).is_none() {
+    if wait_exit(&host, Duration::from_secs(30)).is_none() {
         let _ = release_tx.send(());
         let _ = host.kill_and_teardown();
         panic!("child did not exit after writing its buffered tail");
@@ -458,7 +483,7 @@ fn teardown_waits_for_busy_reader_then_drains_buffered_tail() {
     );
     release_tx.send(()).expect("release reader callback");
     done_rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(Duration::from_secs(30))
         .expect("teardown did not finish after callback release")
         .expect("teardown after busy reader");
     assert!(
@@ -474,11 +499,11 @@ fn extra_env_is_set_and_inherited_claude_vars_are_scrubbed() {
         vec![("TALMINAL_SESSION_ID".into(), "card-a".into())],
     );
     assert!(
-        wait_for(&buf, "TALMINAL_SESSION_ID=card-a", Duration::from_secs(10)),
+        wait_for(&buf, "TALMINAL_SESSION_ID=card-a", Duration::from_secs(30)),
         "extra_env not visible in child env; stripped output: {}",
         stripped(&buf)
     );
-    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
     // giv reader-tråden et øjeblik til at dræne resten før fraværs-asserts
     std::thread::sleep(Duration::from_millis(300));
     let text = stripped(&buf);
@@ -513,7 +538,7 @@ mod supervision_stub_contract {
         // Spejler main.rs' write_pty: beslutning via facaden, derefter host.write.
         let (host, buf) = spawn_collecting(vec![cmd_exe()], vec![]);
         assert!(
-            wait_for(&buf, ">", Duration::from_secs(10)),
+            wait_for(&buf, ">", Duration::from_secs(30)),
             "cmd prompt not seen"
         );
         let gate = EpochGate::new();
@@ -525,12 +550,12 @@ mod supervision_stub_contract {
         host.write(b"echo STUB-GATE-PASSTHROUGH-OK\r")
             .expect("write");
         assert!(
-            wait_for(&buf, "STUB-GATE-PASSTHROUGH-OK", Duration::from_secs(10)),
+            wait_for(&buf, "STUB-GATE-PASSTHROUGH-OK", Duration::from_secs(30)),
             "bytes must reach the child after a stale-epoch decision; output: {}",
             stripped(&buf)
         );
         host.write(b"exit\r").expect("write exit");
-        assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+        assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
         host.kill_and_teardown().expect("teardown");
     }
 
@@ -632,12 +657,12 @@ fn credential_env_denylist_is_scrubbed() {
         wait_for(
             &buf,
             "TALMINAL_SESSION_ID=card-env",
-            Duration::from_secs(10)
+            Duration::from_secs(30)
         ),
         "child env dump not seen; stripped output: {}",
         stripped(&buf)
     );
-    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    assert!(wait_exit(&host, Duration::from_secs(30)).is_some());
     std::thread::sleep(Duration::from_millis(300));
     let text = stripped(&buf);
     for k in ["OPENAI_API_KEY", "GITHUB_TOKEN"] {
