@@ -48,6 +48,26 @@ function readText(path) {
   return buf.toString("utf8");
 }
 
+/** Scriptets egen sti, som `git ls-files` skriver den. */
+const SELV = "scripts/repo-scan.mjs";
+
+/**
+ * En scanner der ligger i det traeer den scanner, matcher SIG SELV. Denne fil
+ * SKAL indeholde `personaos` og `C:\\Users` — det er dét moenstrene er.
+ *
+ * Fanget af CI 2026-08-03, ikke lokalt, og aarsagen er vaerd at kende: scannet
+ * bruger `git ls-files`, saa det ser kun SPOREDE filer. Da jeg koerte det
+ * lokalt, var scriptet stadig utracked og usynligt for sig selv; foerst efter
+ * commit'en blev det en del af sit eget scan-omraade. En lokal koersel foer
+ * commit kan altsaa ikke afsloere den her fejlklasse.
+ *
+ * Undtagelsen er BEVIDST SMAL. Kun de to gates hvis moenstre findes i filen som
+ * DEFINITION, er undtaget. Token-, mail-, UUID- og ejernavns-gaterne er stadig
+ * aktive paa filen — de moenstre optraeder ikke i kilden som data, saa en
+ * indsat noegle her ville stadig blive fanget.
+ */
+const erScannerensEgenKilde = (fil) => fil === SELV;
+
 /**
  * Hver gate: `pattern` finder kandidater, `allow` klassificerer dem som
  * legitime. En kandidat uden `allow`-traef er en FEJL.
@@ -60,11 +80,12 @@ const GATES = [
     // Begge separatorer, begge kasus. Windows-stier optraeder baade som
     // `C:\Users\...` (Rust raw strings) og `C:/Users/...` (JS/TS-literaler).
     pattern: /[cC]:[\\/]+[uU]sers[\\/]+([^\\/"'\s,)\]]*)/g,
-    allow: (linje) =>
+    allow: (linje, fil) =>
       // `x` er den neutrale pladsholder fase 1 (T9) indfoerte overalt hvor en
       // test eller et kommentar-eksempel havde brug for en Windows-sti. Den er
       // ikke et brugernavn, og den maa gerne staa.
-      /[cC]:[\\/]+[uU]sers[\\/]+x([\\/]|["'\s,)\]]|$)/.test(linje),
+      /[cC]:[\\/]+[uU]sers[\\/]+x([\\/]|["'\s,)\]]|$)/.test(linje) ||
+      erScannerensEgenKilde(fil),
     hvorfor: "en RIGTIG brugerprofil-sti i et offentligt repo peger paa ejerens maskine",
   },
   {
@@ -109,7 +130,7 @@ const GATES = [
     // DETTE er den mekaniske sandhed. PII-scannet fanger stier, mails og
     // tokens — ikke brand-rester.
     pattern: /personaos|cnvs/gi,
-    allow: () => false,
+    allow: (_linje, fil) => erScannerensEgenKilde(fil),
     hvorfor: "produktet har aldrig heddet det, og et hit betyder at omdoebningen har en rest",
   },
 ];
