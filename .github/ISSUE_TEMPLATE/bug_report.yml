@@ -1,0 +1,75 @@
+name: Fejlrapport / Bug report
+description: Noget virker ikke som det skal
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tak fordi du tager dig tid. Dansk og engelsk er lige velkomne.
+
+        **Har du fundet et sikkerhedsproblem?** Åbn ikke et issue — brug
+        [SECURITY.md](../blob/main/SECURITY.md)s private kanal i stedet.
+
+  - type: textarea
+    id: hvad-skete
+    attributes:
+      label: Hvad skete der?
+      description: Hvad gjorde du, hvad forventede du, og hvad skete der i stedet?
+      placeholder: |
+        Jeg trykkede PTT og sagde "luk kort to". Jeg forventede at kort 2 lukkede.
+        I stedet skete der ingenting, og HUD'en viste "—".
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduktion
+    attributes:
+      label: Kan du fremkalde den igen?
+      description: Trin for trin. Sker den hver gang, eller kun nogle gange?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Hvilken agent?
+      description: De to opfører sig forskelligt, og fejlklasserne er ikke de samme.
+      options:
+        - Claude Code
+        - Codex CLI
+        - Begge
+        - Ingen / ikke relevant (fx opstart eller stemme)
+    validations:
+      required: true
+
+  - type: input
+    id: versioner
+    attributes:
+      label: Versioner
+      description: >
+        Agentens version (`claude --version` / `codex --version`), din Windows-version,
+        og hvilken Talminal-commit eller -udgivelse du kører.
+      placeholder: "claude 2.x.x · Windows 11 26100 · talminal @ abc1234"
+    validations:
+      required: true
+
+  - type: textarea
+    id: ritual
+    attributes:
+      label: Er ritualet grønt?
+      description: >
+        Kommandoerne står i CONTRIBUTING.md. Er noget rødt, så indsæt outputtet her —
+        det er tit hele svaret. Har du ikke kørt det, så skriv det; det er også et svar.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: andet
+    attributes:
+      label: Andet
+      description: >
+        Logs, skærmbilleder, hvad du allerede har prøvet.
+        **Fjern API-nøgler og personlige stier**, før du indsætter noget.
+    validations:
+      required: false
