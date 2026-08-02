@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sikkerhedsproblem / Security vulnerability
+    url: https://github.com/RWitzner/talminal/security/advisories/new
+    about: >
+      Rapportér IKKE sikkerhedsproblemer i et offentligt issue. Brug den private kanal
+      her — se SECURITY.md.
+  - name: Spørgsmål om brug / Usage question
+    url: https://github.com/RWitzner/talminal/blob/main/SUPPORT.md
+    about: SUPPORT.md samler de hyppigste årsager, før du åbner et issue.
