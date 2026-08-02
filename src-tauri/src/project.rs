@@ -397,7 +397,7 @@ mod tests {
         fs::create_dir_all(&state).unwrap();
         fs::write(
             state.join("project.json"),
-            br#"{"root":"C:\\Users\\r","name":"default","added_at":null}"#,
+            br#"{"root":"C:\\Users\\x","name":"default","added_at":null}"#,
         )
         .unwrap();
 

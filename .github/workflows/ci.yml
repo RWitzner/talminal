@@ -1,0 +1,230 @@
+# Talminal CI — windows-latest, fordi produktet KUN er Windows
+# (`"os": ["win32"]` i package.json, ConPTY, Credential Manager, WebView2).
+# En Linux-runner ville hverken kunne bygge eller sige noget sandt.
+#
+# RAEKKEFOELGEN ER IKKE TILFAELDIG. `data-dir-guard snapshot` er FOERSTE step og
+# `verify` er SIDSTE. Vagten svarer paa spoergsmaalet "aendrede testsuiten noget
+# uden for repoet?", og det spoergsmaal kan kun stilles hvis der findes en
+# maaling fra FOER. At den staar i CI — og ikke kun i en runbook — er hele
+# pointen: en fremmed skal ikke have laest en intern fil for at undgaa at
+# oedelaegge sin egen installation ved sit foerste `cargo test`.
+#
+# Alle actions er pinnet til FULDE commit-SHA'er, ikke tags. Et tag kan flyttes;
+# en SHA kan ikke. `permissions: contents: read` og INGEN brug af `secrets.*`
+# betyder at en fork-PR ikke kan naa noget der er vaerd at stjaele.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # En bidragyder skal se den rigtige fejl, ikke en backtrace-loes gaade.
+  RUST_BACKTRACE: 1
+
+jobs:
+  ritual:
+    name: Ritual (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # FOERSTE step, foer selv Node-opsaetningen. Paa en frisk runner findes
+      # %LOCALAPPDATA%\Talminal ikke, og det er en gyldig baseline: vagten
+      # scanner nul filer og gemmer det. Skriver noget dér undervejs, er den
+      # nye fil en aendring.
+      #
+      # At den koerer paa runnerens forudinstallerede Node og ikke paa .nvmrc's
+      # er bevidst: scriptet bruger udelukkende node-builtins, og en baseline
+      # taget EFTER et andet step er ikke en baseline.
+      - name: data-dir-guard snapshot (FOERSTE step)
+        shell: bash
+        run: node scripts/data-dir-guard.mjs snapshot
+
+      - name: Setup Node (fra .nvmrc)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # rust-toolchain.toml pinner 1.89.0; runnerens rustup henter den selv ved
+      # foerste cargo-kald. Derfor ingen tredjeparts-toolchain-action — én
+      # afhaengighed mindre i forsyningskaeden, og pinningen bor ét sted.
+      - name: Rust-toolchain (fra rust-toolchain.toml)
+        shell: bash
+        working-directory: src-tauri
+        run: |
+          rustup show active-toolchain
+          rustc --version
+          cargo --version
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: npm ci
+        run: npm ci
+
+      - name: vitest
+        run: npx vitest run
+
+      - name: npm run build
+        run: npm run build
+
+      - name: cargo test --locked
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: cargo test --locked --features supervision
+        working-directory: src-tauri
+        run: cargo test --locked --features supervision
+
+      - name: cargo check --features perf-trace
+        working-directory: src-tauri
+        run: cargo check --locked --features perf-trace
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      # TRE clippy-koersler, ikke én, og hver daekker noget de andre ikke ser.
+      #
+      # `--all-targets` traekker dev-dependencies ind, og self-dev-dependency'en
+      # i Cargo.toml taender dermed `test-seams` for hele pakken. Det betyder at
+      # produktionens keyring-vej i src/secrets.rs er CFG-STRIPPET VAEK under
+      # den koersel og aldrig bliver lintet. Den anden koersel (uden
+      # `--all-targets`) bygger kun lib+bins uden dev-deps og ser praecis den
+      # gren. Den tredje bygger de to opt-in-gatede testfiler, som ellers ikke
+      # kompileres af noget som helst i CI — en syntaksfejl dér ville overleve
+      # et fuldt groent job.
+      - name: cargo clippy --all-targets
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: cargo clippy (produktionsgrenen, uden --all-targets)
+        working-directory: src-tauri
+        run: cargo clippy --locked -- -D warnings
+
+      - name: cargo clippy (de opt-in-gatede testfiler)
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets --features keyring-smoke,live-data-probe -- -D warnings
+
+      # Secret-/PII-/brand-scan. Se scripts/repo-scan.mjs for gaterne og for
+      # hver enkelt klassificeret undtagelse med sin begrundelse.
+      #
+      # Scannet er JavaScript og ikke `git grep` i et shell-step, og det er et
+      # maalt valg: fase 1's T9 fandt at den slags regex er SHELL-AFHAENGIG —
+      # samme kommando ramte forskellige hit-saet i PowerShell og Git Bash, og
+      # PowerShell-formen fangede tre steder Bash-formen ikke saa. Da scannet
+      # blev skrevet om uden shell, gik sti-gaten fra seks kendte hits til
+      # TRETTEN. En gate der ser groennere ud end traeet er, er vaerre end
+      # ingen gate.
+      - name: Secret-/PII-/brand-scan
+        shell: bash
+        run: node scripts/repo-scan.mjs --verbose
+
+      # SIDSTE step, uanset hvad der gik forud: fejlede en test, vil vi stadig
+      # vide om den naaede at skrive uden for repoet.
+      - name: data-dir-guard verify (SIDSTE step)
+        if: always()
+        shell: bash
+        run: node scripts/data-dir-guard.mjs verify
+
+  # Vagten beviser sig selv, hver gang.
+  #
+  # Fase 2's laere staar og falder med dette: en vagt der aldrig har faeldet
+  # noget er en paastand. Fokus-specens klar-kriterium §2.2 er ordret at "en
+  # bevidst glemsom test faelder data-dir-vagten i CI". Havde vi noejedes med
+  # at bevise det én gang i haanden, ville beviset forfalde tavst den dag nogen
+  # broed vagten. Her er det en STAAENDE egenskab: braekker klassifikationen,
+  # bliver DETTE job roedt — ikke ritualet.
+  #
+  # Jobbet koerer paa en frisk, engangs-runner, saa sonderne skriver i en
+  # datamappe der forsvinder med maskinen. Det er praecis derfor det ikke maa
+  # koere paa en udviklers maskine uden `--features live-data-probe`.
+  guard-proves-itself:
+    name: Data-dir-vagten faelder en glemsom test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: cargo-probe-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-probe-${{ runner.os }}-
+
+      - name: Byg sonderne
+        working-directory: src-tauri
+        run: cargo test --locked --features live-data-probe --test data_dir_guard_negative --no-run
+
+      - name: Hver sonde skal give det udfald den lover
+        shell: bash
+        run: |
+          set -u
+          fejl=0
+          proev() {
+            navn="$1"; forventet="$2"
+            node scripts/data-dir-guard.mjs snapshot > /dev/null
+            (cd src-tauri && cargo test --locked --features live-data-probe \
+               --test data_dir_guard_negative -- --ignored --exact "$navn" --nocapture)
+            set +e
+            node scripts/data-dir-guard.mjs verify
+            kode=$?
+            set -e
+            if [ "$kode" = "$forventet" ]; then
+              echo "OK: $navn -> verify exit $kode (forventet $forventet)"
+            else
+              echo "::error::$navn gav verify exit $kode, forventet $forventet"
+              fejl=1
+            fi
+          }
+          # De to der SKAL faelde vagten.
+          proev glemsom_test_uden_serial_skriver_i_traad_arkivet 1
+          proev glemsom_test_uden_serial_skriver_i_hud_mappen 1
+          # Og den ene accepterede blindhed, pinnet saa den ikke kan vokse.
+          # Bliver DEN roed, er hud\context\-moensteret indsnaevret — hvilket
+          # kan vaere rigtigt, men saa skal tap'ens egne context-filer stadig
+          # kunne skrives uden falsk roed.
+          proev glemsom_sonde_i_hud_context_giver_kun_en_note 0
+          exit $fejl
+
+# GATE 1 KOERER IKKE HER, OG DET ER MED VILJE.
+#
+# Gate 1 er voice-routerens eval-suite (u01-u41) mod rigtige model-endpoints.
+# Den koster penge pr. koersel og kraever provider-noegler. To grunde til at den
+# aldrig maa glide ind i dette job:
+#
+#   1. Den er en BETALT NETVAERKSTEST. En fork-PR ville kunne braende ejerens
+#      kvote ved at aabne pull requests.
+#   2. Den kraever secrets, og secrets maa aldrig vaere tilgaengelige for
+#      fork-PRs. Det oejeblik dette job faar adgang til en provider-noegle, er
+#      `permissions: contents: read` ovenfor teater.
+#
+# Gate 1 forbliver en MANUEL, beskyttet release-gate paa et reviewet commit,
+# med endpoint, model og version logget i resultatet (fase 5). Er du ved at
+# "hjaelpe" ved at tilfoeje den her: lad vaere.
