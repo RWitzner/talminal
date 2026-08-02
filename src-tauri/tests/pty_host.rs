@@ -345,8 +345,15 @@ fn teardown_drains_high_output_through_final_sentinel() {
     )
     .expect("spawn high-output child");
 
+    // 60 s og ikke 15: deadline'en er et vaern mod at HAENGE, ikke en
+    // hastigheds-assertion — testen beviser at draeningen bevarer den sidste
+    // sentinel, uanset hvor lang tid barnet bruger. Isoleret koerer den paa
+    // 0,69 s, men under fuld parallel suite kan den overskride 15 s (maalt
+    // 2026-08-02: faeldede ét ritual, groen 3/3 isoleret i samme minut).
+    // Paa en toekernet CI-runner er 15 s en kilde til roed CI uden en fejl,
+    // og en gate der er roed uden grund bliver ignoreret.
     assert!(
-        wait_exit(&host, Duration::from_secs(15)).is_some(),
+        wait_exit(&host, Duration::from_secs(60)).is_some(),
         "high-output child did not exit"
     );
     host.kill_and_teardown().expect("drain high-output tail");
