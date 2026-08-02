@@ -78,7 +78,8 @@ required-features = ["keyring-smoke"]
 [[test]]
 name = "data_dir_guard_negative"
 path = "tests/data_dir_guard_negative.rs"
-required-features = ["live-data-probe"]
+# MIDLERTIDIGT AFMONTERET (T5 Step 5): required-features fjernet, saa
+# ritualets `cargo test` bygger sonderne. Denne branch SKAL give roed CI.
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

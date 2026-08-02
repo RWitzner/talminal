@@ -141,7 +141,7 @@ fn skriv_sonde(dir: &Path, filnavn: &str) -> PathBuf {
 /// `threads/` er IKKE i vagtens `EXTERNAL_WRITERS`, saa den skal give HAARD
 /// fejl: `verify` exit 1.
 #[test]
-#[ignore]
+// MIDLERTIDIGT AF-IGNORERET (T5 Step 5) — denne branch skal faelde CI.
 fn glemsom_test_uden_serial_skriver_i_traad_arkivet() {
     // Med vilje INGEN common::serial() her. Det er hele testen.
     skriv_sonde(&archive::threads_dir(), &format!("{PROBE_STEM}.jsonl"));
