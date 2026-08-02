@@ -1,0 +1,19 @@
+# Reply-klip-manifest (kommandosæt v4 + multi) — 14 klip
+# Format: WAV, 24 kHz, mono, 16-bit PCM. Én fil pr. sætning (ejer-låst).
+# Kolonner: filnavn TAB talt tekst.
+# Filnavne = ClipKey i src/voice/replies.ts 1:1 (vitest håndhæver parret).
+
+sendt.wav	Sendt
+kort-aabnet.wav	Kort åbnet
+kort-lukket.wav	Kort lukket
+alle-lukket.wav	Alle lukket
+kort-genstartet.wav	Kort genstartet
+browser-aabnet.wav	Browser åbnet
+udfoert.wav	Udført
+det-fangede-jeg-ikke.wav	Det fangede jeg ikke
+ingen-lyd-fanget-proev-igen.wav	Ingen lyd fanget — prøv igen
+kortet-findes-ikke.wav	Kortet findes ikke
+sig-det-med-et-kortnummer.wav	Sig det med et kortnummer
+ingen-kort-aabne.wav	Ingen kort åbne
+det-kort-er-en-browser.wav	Det kort er en browser
+noget-gik-galt-se-skaermen.wav	Noget gik galt — se skærmen

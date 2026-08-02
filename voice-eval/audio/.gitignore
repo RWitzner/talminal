@@ -1,0 +1,10 @@
+# Mikrofon-indtalinger af eval-sættet (Task 13, verdict 5).
+# Audio committes ikke — potentielt for store, og de er lokal test-input, ikke kildekode.
+*.wav
+*.m4a
+*.mp3
+*.ogg
+*.flac
+*.webm
+!README.md
+!.gitignore
