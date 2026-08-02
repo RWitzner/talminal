@@ -4,9 +4,9 @@
 //! Windows Credential Manager. Én `cargo test` var maalt til at efterlade fem
 //! nye poster, og 311 `talminal-test-*`-poster havde ophobet sig i brugerens
 //! credential-store — teardown-guarden slugte dengang sin fejl i et
-//! `let _ = delete_secret(...)`, saa oprydningen kunne fejle tavst i aarevis
-//! (den rettelse hoerer i T2; denne fil beskriver hvorfor seamet blev til, ikke
-//! hvordan teardown'en ser ud i dag). Suiten maalte desuden OS'ets
+//! `let _ = delete_secret(...)`, saa oprydningen kunne fejle tavst i aarevis.
+//! Den rapporterer i dag; se `KeyGuard` og de tre `key_guard_*`-tests i
+//! tests/secrets.rs. Suiten maalte desuden OS'ets
 //! credential-store i stedet for vores egen kontrakt, og kunne ikke koere paa
 //! en maskine uden en Credential Manager overhovedet.
 //!
