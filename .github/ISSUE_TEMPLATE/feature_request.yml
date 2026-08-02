@@ -1,0 +1,52 @@
+name: Idé eller ønske / Feature request
+description: Noget der mangler, eller kunne være bedre
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dansk og engelsk er lige velkomne.
+
+        Skriv gerne **hvad du prøvede at opnå**, ikke kun hvad du vil have bygget.
+        Problemet er som regel mere interessant end løsningen, og der findes tit en
+        billigere vej end den man selv fik øje på først.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Hvad prøvede du at gøre?
+      description: Situationen, ikke løsningen. Hvad stod i vejen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: forslag
+    attributes:
+      label: Hvad forestiller du dig?
+      description: Har du en idé til hvordan, så skriv den. Det er fint ikke at have en.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternativer
+    attributes:
+      label: Hvad gør du i stedet i dag?
+      description: >
+        Findes der en omvej der virker? Det fortæller hvor ondt det gør, og om
+        ændringen overhovedet skal bygges.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: omfang
+    attributes:
+      label: Inden du sender
+      options:
+        - label: >
+            Jeg har set i ARCHITECTURE.md, om det jeg vil have, allerede findes et andet
+            sted i kodebasen
+          required: false
+        - label: >
+            Jeg ved at det her er et Windows-kun projekt med dansk stemmestyring, og at
+            forslaget skal give mening inden for det
+          required: false
