@@ -1,0 +1,99 @@
+[package]
+name = "talminal-canvas"
+version = "0.1.0"
+description = "Talminal - the sole pty owner: card grid hosting agent CLI workers"
+edition = "2021"
+rust-version = "1.89"
+# Required once a second [[bin]] exists — otherwise `cargo run` / `npm run tauri dev` break (M10).
+default-run = "talminal-canvas"
+
+# Library target so that `tests/` integration tests (Tasks 6-8) can import
+# pty/cards/presence/signals/epoch. `_lib` suffix avoids the Windows PDB
+# filename collision between the bin and lib targets (Tauri 2 convention).
+[lib]
+name = "talminal_canvas_lib"
+path = "src/lib.rs"
+
+# B-light T3: CLI launcher (sibling of auto-discovered talminal-canvas from src/main.rs).
+[[bin]]
+name = "talminal"
+path = "src/bin/talminal.rs"
+
+[features]
+# Supervision er PARKERET (spec v0.6 forbliver sporets sandhedskilde):
+# epoch-gate, pause-/resume-signalfiler og presence-poller kompileres kun
+# med featuren. Default-staten stubber den frosne IPC-kontrakt — gate altid
+# pass-through, owner "persona", epoch 0, ingen signalfiler (se src/control.rs).
+default = []
+supervision = []
+# Permanent measurement channel.  Normal builds do not compile any trace
+# writer, event payloads or measured-path argument evaluation.
+perf-trace = []
+# Test-seams: reset/force/injektion som integrationstests i tests/ har brug for.
+# `cfg(test)` er falsk naar lib'en bygges som dependency for et test-target, saa
+# seams gates paa denne feature i stedet. Self-dev-dependency'en nedenfor goer
+# den aktiv under `cargo test` og KUN der — release-builds har den ikke.
+test-seams = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# browser-cards Task 5: `unstable` enables the multi-webview API (Window::add_child,
+# WebviewBuilder) that the browser-card host layer (browser_host.rs) builds on.
+tauri = { version = "2", features = ["unstable"] }
+# Workspace-rail'en Task 12: den native mappevaelger bag "+ Tilfoej projekt".
+# Bruges KUN fra Rust-siden (workspaces::commands::add_workspace), som ligger
+# uden for capability-ACL'en — derfor staar der intet i capabilities/default.json.
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+base64 = "0.22"
+portable-pty = "=0.9.0"
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+# browser-cards Task 5: explicit direct dep for URL-scheme validation in
+# browser_host.rs (already transitive via tauri; pinned here for clarity).
+url = "2"
+# Task 1 Del B (scaffold): deps prae-registreret for parallelle bolger —
+# keyring bruges af Task 14 (secrets). global-shortcut fjernet i B-light T2
+# (Rust-side; JS-pakken fjernes i T5).
+keyring = { version = "3", features = ["windows-native"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "multipart"] }
+# Router-hedging (staggered andet-skud mod gateway-tail-spikes): time + sync
+# til sleep/kanal — tokio var allerede transitiv via reqwest/tauri.
+tokio = { version = "1", features = ["time", "sync"] }
+sha2 = "0.10"
+# browser-cards Task 4: minimal streamable-HTTP MCP server (JSON-RPC over
+# tiny_http, deterministic hand-rolled impl instead of the rmcp SDK — plan
+# rev 2.3 / spec §6-amendment).
+tiny_http = "0.12"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Media",
+    # `CreateMutexW` (instance.rs' duplikat-vaern) tager en *const
+    # SECURITY_ATTRIBUTES og er derfor gated paa BAADE Win32_System_Threading og
+    # Win32_Security. Featuren var indtil Task 12 aldrig deklareret her — den kom
+    # transitivt fra rustls-platform-verifier/quinn-udp, som ogsaa brugte
+    # windows-sys 0.59. Da tauri-plugin-dialog trak rfd (windows-sys 0.60) ind,
+    # flyttede de to til 0.61 og featuren forsvandt tavst under os.
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+# Mikrofon-permission for appens EGET webview (webview_permissions.rs).
+# Begge crates kom i forvejen transitivt med tauri/wry — versionerne her er
+# LAAST til dem Cargo.lock allerede havde (webview2-com 0.38.2, windows 0.61.3),
+# saa der ikke traekkes en anden kopi af de samme COM-typer ind. Bemaerk at
+# `windows` er en ANDEN crate end `windows-sys` ovenfor; pinningen dér er urørt.
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
+
+[dev-dependencies]
+tempfile = "3"
+# Cargo tillader en dev-dependency-cykel paa egen crate. Det er den etablerede
+# vej til at aktivere en test-only feature uden at skrive den ind i ritualets
+# kommandolinje. Lib-targetet heder talminal_canvas_lib uanset pakkenavnet.
+talminal-canvas = { path = ".", features = ["test-seams"] }

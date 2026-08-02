@@ -1,0 +1,37 @@
+{
+  "_comment": "Delt grammatik-kontrakt mellem wake_hotkey.rs og ptt.ts. Begge lag SKAL acceptere og afvise praecis det samme. Se spec 2026-07-28-voice-hotkey-vaelger-design.md.",
+  "valid": [
+    { "accel": "Ctrl+Shift+Space",       "ctrl": true,  "shift": true,  "alt": false, "code": "Space" },
+    { "accel": "CmdOrCtrl+Shift+Space",  "ctrl": true,  "shift": true,  "alt": false, "code": "Space" },
+    { "accel": "Alt+KeyQ",               "ctrl": false, "shift": false, "alt": true,  "code": "KeyQ" },
+    { "accel": "Option+Space",           "ctrl": false, "shift": false, "alt": true,  "code": "Space" },
+    { "accel": "Ctrl+Semicolon",         "ctrl": true,  "shift": false, "alt": false, "code": "Semicolon" },
+    { "accel": "Shift+Escape",           "ctrl": false, "shift": true,  "alt": false, "code": "Escape" },
+    { "accel": "Ctrl+Alt+KeyE",          "ctrl": true,  "shift": false, "alt": true,  "code": "KeyE" },
+    { "accel": "F9",                     "ctrl": false, "shift": false, "alt": false, "code": "F9" },
+    { "accel": "F12",                    "ctrl": false, "shift": false, "alt": false, "code": "F12" },
+    { "accel": "Mouse4",                 "ctrl": false, "shift": false, "alt": false, "code": "Mouse4" },
+    { "accel": "Mouse1",                 "ctrl": false, "shift": false, "alt": false, "code": "Mouse1" },
+    { "accel": "Ctrl+Mouse5",            "ctrl": true,  "shift": false, "alt": false, "code": "Mouse5" },
+    { "accel": "Ctrl+ArrowUp",           "ctrl": true,  "shift": false, "alt": false, "code": "ArrowUp" },
+    { "accel": "control+9",              "ctrl": true,  "shift": false, "alt": false, "code": "Digit9" },
+    { "accel": "Shift+a",                "ctrl": false, "shift": true,  "alt": false, "code": "KeyA" },
+    { "accel": "Ctrl+Alt+f5",            "ctrl": true,  "shift": false, "alt": true,  "code": "F5" }
+  ],
+  "invalid": [
+    "",
+    "Space",
+    "KeyA",
+    "Escape",
+    "ArrowUp",
+    "Semicolon",
+    "Ctrl+Foo",
+    "Ctrl+A+B",
+    "Ctrl+KeyA+KeyB",
+    "Numpad0",
+    "Ctrl+Numpad0",
+    "Ctrl+NumpadEnter",
+    "Mouse6",
+    "Ctrl"
+  ]
+}
