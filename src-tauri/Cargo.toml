@@ -3,7 +3,15 @@ name = "talminal-canvas"
 version = "0.1.0"
 description = "Talminal - the sole pty owner: card grid hosting agent CLI workers"
 edition = "2021"
+# MSRV. Haandhaeves af rust-toolchain.toml i repo-roden, som pinner den
+# EKSAKTE 1.89.0 — den version fase 2's ritual-tal er maalt paa.
 rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/RWitzner/talminal"
+# Uden mailadresse med vilje: repoet bliver offentligt, og en privat mail i en
+# maskinlaesbar metadata-fil er en spam-magnet. Kontaktvejen er GitHub —
+# issues og Private Vulnerability Reporting (se SECURITY.md).
+authors = ["Robin Witzner"]
 # Required once a second [[bin]] exists — otherwise `cargo run` / `npm run tauri dev` break (M10).
 default-run = "talminal-canvas"
 

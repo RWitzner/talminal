@@ -1,0 +1,19 @@
+# MAALT, ikke gaettet: `rustc --version` paa den maskine der producerede
+# fase 2's ritual-tal gav 1.89.0 (29483883e 2025-08-04), og `Cargo.toml`s
+# `rust-version = "1.89"` erklaerer samme MSRV.
+#
+# Kanalen er den EKSAKTE version og ikke "stable", fordi "stable" er en
+# bevaegelig reference: paa netop denne maskine peger `stable` i dag paa
+# 1.89.0, men der ligger ogsaa en 1.95.0 installeret ved siden af — et
+# `rustup update` ville altsaa flytte grunden under en bidragyder uden at
+# nogen fil aendrede sig. En pinning der kan skride, er ikke en pinning.
+#
+# `components` daekker praecis det ritualet kraever: `cargo fmt --check` og
+# `cargo clippy` er begge nul-output-gates i CI, og en toolchain uden dem
+# fejler foerst midt i et job. `profile = "minimal"` holder downloaden nede
+# for bidragydere og CI-runnere; komponenterne ovenfor tilfoejes eksplicit.
+[toolchain]
+channel = "1.89.0"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc"]
+profile = "minimal"
