@@ -346,13 +346,62 @@ mod tests {
         attention_patterns: &[],
     };
 
+    /// Test-profil MED et PATH-hit — men et hit testen selv laver.
+    static TEST_PRESENT: AgentProfile = AgentProfile {
+        id: "test-present",
+        spawn_command: &["findes-paa-path-xyz"],
+        resume_command: &["findes-paa-path-xyz"],
+        env_deny_prefixes: &[],
+        env_deny_exact: &[],
+        submit_gap_ms: 0,
+        transcript_root: || std::path::PathBuf::new(),
+        readiness: None,
+        mcp: super::McpInjection::ClaudeFlags,
+        exe_fallback: None,
+        attention_patterns: &[],
+    };
+
+    /// PATH-hit-vejen returnerer inputtet BIT-IDENTISK; fravaer giver en
+    /// beskrivende fejl.
+    ///
+    /// Testen byggede indtil OSS-fase 2 sit PATH-hit paa at `claude.exe` laa
+    /// paa maskinens PATH — kommentaren sagde det ligefrem ("findes i
+    /// testmiljoeet"). Det var en EJER-MASKINE-ANTAGELSE forkleddt som en
+    /// test: den var groen hos den ene der havde Claude Code installeret, og
+    /// roed for enhver anden. CI fandt den paa foerste koersel
+    /// (`profiles.rs:353`, 2026-08-02), og den ramte fase 2's barre direkte —
+    /// *klon, `cargo test`, groent*.
+    ///
+    /// Nu laver testen sit eget hit: en temp-mappe med en tom fil ved navn
+    /// `<program>.exe` og PATH peget derhen. `resolve_spawn_program` spoerger
+    /// kun `is_file()`, saa filen behoever ikke vaere en rigtig binaer — og
+    /// programnavnet er opdigtet, saa ingen installeret binaer kan forstyrre
+    /// maalingen i nogen retning. Ingen anden maskine end denne proces er
+    /// involveret.
     #[test]
     fn resolve_spawn_program_returns_input_on_path_hit_and_errors_when_absent() {
-        // PATH-hit (claude.exe findes i testmiljoeet via PATH) -> input uaendret
-        let claude = super::profile("claude").unwrap();
-        assert_eq!(super::resolve_spawn_program(claude).unwrap(), "claude");
-        // profil uden PATH-hit og uden fallback -> beskrivende fejl
-        let err = super::resolve_spawn_program(&TEST_MISSING).unwrap_err();
-        assert!(err.contains("findes-ikke-xyz.exe"));
+        let _g = env_lock();
+        let dir = tempfile::tempdir().expect("temp path-mappe");
+        std::fs::write(dir.path().join("findes-paa-path-xyz.exe"), b"").expect("laeg exe paa PATH");
+
+        let foer = std::env::var_os("PATH");
+        std::env::set_var("PATH", dir.path());
+        let hit = super::resolve_spawn_program(&TEST_PRESENT);
+        let mangler = super::resolve_spawn_program(&TEST_MISSING);
+        match foer {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+
+        assert_eq!(
+            hit.expect("PATH-hit"),
+            "findes-paa-path-xyz",
+            "PATH-hit skal give inputtet uaendret — CC-vejen er bit-identisk"
+        );
+        let err = mangler.expect_err("uden PATH-hit og uden fallback");
+        assert!(
+            err.contains("findes-ikke-xyz.exe"),
+            "fejlen ER brugerteksten og skal navngive den manglende binaer: {err}"
+        );
     }
 }

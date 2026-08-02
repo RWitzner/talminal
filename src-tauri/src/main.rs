@@ -2517,6 +2517,15 @@ mod tests {
         resolve_command_program, spawn_failed_payload, spawn_or_close, startup_lock_failure_message,
     };
 
+    // PATH er PROCES-global, og cargo koerer unit-tests multi-traadet i én
+    // binary. En test der peger PATH et andet sted skal derfor have laasen i
+    // haanden — samme moenster som `profiles.rs`' ENV_LOCK.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     // T3: unit-daekning af selve exe-oploesnings-transformationen, isoleret
     // fra laase/PTY-spawn (K1-VAGT, GPT-review-fund B1).
 
@@ -2532,13 +2541,33 @@ mod tests {
         );
     }
 
+    /// PATH-hit-vejen returnerer inputtet uaendret (spike §5.6).
+    ///
+    /// Testen forudsatte indtil OSS-fase 2 at `claude.exe` laa paa maskinens
+    /// PATH — samme ejer-maskine-antagelse som
+    /// `profiles::tests::resolve_spawn_program_returns_input_on_path_hit...`,
+    /// og kommentaren pegede endda paa den som praecedens. CI fandt begge to
+    /// paa foerste koersel: groen hos den ene der havde Claude Code
+    /// installeret, roed for enhver anden. Her SKAL profilen vaere den rigtige
+    /// "claude" (det er profil-opslaget der testes), saa i stedet peges PATH
+    /// paa en temp-mappe med en tom `claude.exe`. `resolve_spawn_program`
+    /// spoerger kun `is_file()`.
     #[test]
     fn resolve_command_program_keeps_path_hit_bit_identical() {
-        // claude.exe findes paa PATH i testmiljoeet (samme forudsaetning som
-        // profiles.rs' resolve_spawn_program_returns_input_on_path_hit...) =>
-        // PATH-hit-vejen returnerer inputtet uaendret (spike §5.6).
+        let _g = env_lock();
+        let dir = tempfile::tempdir().expect("temp path-mappe");
+        std::fs::write(dir.path().join("claude.exe"), b"").expect("laeg claude.exe paa PATH");
+
+        let foer = std::env::var_os("PATH");
+        std::env::set_var("PATH", dir.path());
         let mut command = vec!["claude".to_string()];
-        resolve_command_program("claude", false, &mut command).expect("PATH-hit resolution");
+        let udfald = resolve_command_program("claude", false, &mut command);
+        match foer {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+
+        udfald.expect("PATH-hit resolution");
         assert_eq!(
             command[0], "claude",
             "PATH-hit skal vaere bit-identisk med input"
