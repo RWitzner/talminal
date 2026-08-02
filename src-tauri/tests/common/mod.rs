@@ -22,6 +22,21 @@
 //! threads-testfil tager den. Sikkerheden er dermed en egenskab ved hjaelperen
 //! i stedet for en vane hos forfatteren — det er forskellen paa at holde og
 //! paa at holde indtil nogen glemmer det.
+//!
+//! NAAR NOGEN ALLIGEVEL GLEMMER DET, er `scripts/data-dir-guard.mjs` det der
+//! bliver roedt — og at den faktisk BLIVER roedt, er bevist og ikke paastaaet:
+//! `tests/data_dir_guard_negative.rs` begaar fejlen med vilje og dokumenterer
+//! den eksakte kommandosekvens der faelder vagten. Den fil er gatet BAADE af
+//! `required-features = ["live-data-probe"]` og af `#[ignore]`, fordi den
+//! forurener den levende installation, og den maa aldrig tage `serial()` —
+//! saa ville den arve sandkassen og bevise ingenting.
+//!
+//! ÉN STI SANDKASSES IKKE AF `serial()`, og den er vaerd at kende foer man
+//! skriver en test der roerer den: `voice_capture::default_capture_path()`
+//! oploeser `%LOCALAPPDATA%\Talminal\voice-eval\` direkte fra `LOCALAPPDATA`
+//! og laeser hverken `TALMINAL_HOME` eller `TALMINAL_GLOBAL_HOME`. Vagten
+//! FANGER den (mappen er ikke undtaget), men raadet "tag serial()" hjaelper
+//! ikke dér — brug `reset_capture_at`/`append_capture_at` med eksplicit sti.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};

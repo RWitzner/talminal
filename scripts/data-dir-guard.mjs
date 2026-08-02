@@ -60,10 +60,74 @@ const manifestPath = join("src-tauri", "target", "data-dir-guard.json");
  *
  *  De ignoreres IKKE — de rapporteres som en note og faelder ikke koerslen.
  *  Alt andet (threads\, projects\, signals\, workspace.json, settings.json,
- *  cards.toml) er app- og test-flade og er haard fejl. */
-const EXTERNAL_WRITERS = ["hud/", "ingress/", "presence/"];
+ *  cards.toml) er app- og test-flade og er haard fejl.
+ *
+ *  **UNDTAGELSEN ER EN MAPPE-REGEL, OG DET VAR ET HUL.** Maalt 2026-08-02 (T3)
+ *  med `tests/data_dir_guard_negative.rs`: en glemsom test uden
+ *  `common::serial()` skrev `hud\data-dir-guard-negative-probe.json` via
+ *  `usage_hud::snapshot_path()`, og `verify` svarede
+ *  "er uroert af testsuiten — OK" med exit 0. En vagt der siger OK om en
+ *  forurening den selv har set og printet, er vaerre end ingen vagt: den
+ *  flytter en fejl fra "ingen kigger" til "nogen kiggede og frikendte den".
+ *
+ *  Derfor er undtagelsen nu de NAVNE skribenten producerer, ikke mappen den
+ *  producerer dem i. Moenstrene er laest ud af skribenternes egen kode:
+ *  `statusline-tap/tap.mjs` skriver `usage.json`, `context\<kort>.json` og —
+ *  naar den er armeret — `tap-debug-<noegle>.json`, hver gang via tmp+rename,
+ *  saa en `.tmp-<pid>`-sibling kan fanges midt i en scanning; den fjerner ogsaa
+ *  context-filer aeldre end 7 dage, saa sletninger dér er normal drift.
+ *  Tap-VAERKTOEJET har to skribenter, ikke én: `tap.mjs` skriver datafilerne
+ *  ovenfor, og `statusline-tap/install.mjs:76-77` deployer selve `tap.mjs`,
+ *  `lib.mjs` og `tap-config.json` til samme mappe. Alle tre ligger i en
+ *  installation hvor tap'en er slaaet til, og en geninstallation midt i et
+ *  ritual ville ellers give en haard roed der ANKLAGER TESTSUITEN for noget et
+ *  menneske gjorde med vilje. De er derfor med i moensteret — de er ikke en
+ *  fejlklasse nogen test kan ramme.
+ *
+ *  `presence\` er indsnaevret paa samme maade: kontrakten staar i
+ *  `src/presence.rs:1` — `controller.json` + `session-<key>.json`, skrevet
+ *  atomisk med tmp+replace. `ingress\` forbliver en HEL mappe-undtagelse,
+ *  og grunden er aerlig frem for pyntelig: vi kender ikke controllerens
+ *  navnerum dér, og `git grep -i ingress -- "*.rs"` er TOM — der findes ikke
+ *  én Rust-resolver til mappen, saa den eneste vej ind for en test er en
+ *  haandsamlet sti.
+ *
+ *  Et navn i `hud\` eller `presence\` som skribenterne ikke producerer — fx en
+ *  testfixtur — er dermed haard fejl igen.
+ *
+ *  TILBAGE STAAR ÉN AEGTE BLINDHED, og den skal beskrives praecist, for den
+ *  foerste formulering af dette afsnit var FORKERT (fanget i T3's review):
+ *  skriver en glemsom test praecis `hud\usage.json` eller
+ *  `hud\context\<navn>.json`, kan intet indholds-diff skelne den fra tap'en —
+ *  de to skribenter deler stien. Det er IKKE fordi stierne er svaere at ramme:
+ *  `usage_hud::snapshot_path()` (src/usage_hud.rs) og
+ *  `context_hud::context_dir()` (src/context_hud.rs:72) er begge `pub` og
+ *  begge ét kald fra enhver integrationstest — altsaa praecis den fejlklasse
+ *  vagten findes for. Det der goer blindheden IRREDUCIBEL er navnene: tap'ens
+ *  `contextFileKey` (statusline-tap/lib.mjs) tillader hele `[A-Za-z0-9._-]+`,
+ *  saa et fixtur-navn kan ikke skelnes fra et kortnavn. Blindheden er derfor
+ *  accepteret som et maalt vilkaar, ikke som en antagelse — og den er pinnet
+ *  af `glemsom_sonde_i_hud_context_giver_kun_en_note` i
+ *  `src-tauri/tests/data_dir_guard_negative.rs`, saa den ikke kan vokse tavst.
+ *  Tilfoejes der nogensinde en Rust-SKRIVNING under `hud\`, `ingress\` eller
+ *  `presence\`, skal denne afvejning tages om. */
+const EXTERNAL_WRITERS = [
+  {
+    dir: "hud/",
+    owns: /^hud\/(usage\.json|context\/[^/]+\.json|tap-debug-[^/]+\.json|tap\.mjs|lib\.mjs|tap-config\.json)(\.tmp-\d+)?$/,
+  },
+  { dir: "ingress/", owns: /^ingress\/./ },
+  { dir: "presence/", owns: /^presence\/(controller|session-[^/]+)\.json(\.tmp-\d+)?$/ },
+];
 
-const isExternal = (path) => EXTERNAL_WRITERS.some((prefix) => path.startsWith(prefix));
+/** Mappen en sti hoerer under, uanset om NAVNET er skribentens. Bruges til
+ *  fejlteksten: en haard roed i `hud\` skal kunne laeses uden at gaette. */
+const externalDir = (path) => EXTERNAL_WRITERS.find((w) => path.startsWith(w.dir));
+
+const isExternal = (path) => {
+  const writer = externalDir(path);
+  return writer !== undefined && writer.owns.test(path);
+};
 
 /** Relativ sti -> `{ size, hash }`, for hver fil rekursivt.
  *
@@ -180,9 +244,13 @@ if (!schemaMatches) {
   process.exit(0);
 }
 
+/** Posterne baerer stien med, ikke kun den formaterede linje: fejlteksten skal
+ *  kunne se OM en haard aendring laa i en af de tre mapper med andre skribenter
+ *  og i saa fald forklare hvorfor navnet alligevel ikke var undtaget. */
 const changes = [];
 const notes = [];
-const record = (path, line) => (isExternal(path) ? notes : changes).push(line);
+const record = (path, line) => (isExternal(path) ? notes : changes).push({ path, line });
+const lines = (poster) => poster.map((p) => p.line).join("\n");
 
 for (const root of manifest.roots) {
   const after = await scan(root.dir);
@@ -206,7 +274,7 @@ if (notes.length > 0) {
   console.log(
     `data-dir-guard: note — ${notes.length} aendring(er) i mapper med andre ` +
       `skribenter end testene (statusline-tap / controller), ikke en fejl:\n` +
-      notes.join("\n"),
+      lines(notes),
   );
 }
 
@@ -215,13 +283,30 @@ if (changes.length === 0) {
   process.exit(0);
 }
 
+/** Laa en haard aendring i hud\/ingress\/presence\, er navnet ikke ét
+ *  skribenten producerer. Uden den saetning ville linjen laese som en
+ *  selvmodsigelse mod kommentaren ved EXTERNAL_WRITERS. */
+const externalMiss = changes.some((c) => externalDir(c.path) !== undefined);
+
 console.error(
   `data-dir-guard: testsuiten skrev i den RIGTIGE datamappe:\n` +
-    changes.join("\n") +
+    lines(changes) +
+    (externalMiss
+      ? "\n\nEn af linjerne ligger i hud\\, ingress\\ eller presence\\ og er " +
+        "alligevel roed: undtagelsen dér daekker kun de NAVNE statusline-tap'en " +
+        "og controlleren faktisk producerer, ikke mappen som helhed (se " +
+        "EXTERNAL_WRITERS i dette script). Er navnet en legitim ny udgivelse fra " +
+        "en af dem, hoerer det til i moensteret — ikke i en bredere mappe-regel."
+      : "") +
     "\n\nEn test opløste sin datasti til den levende installation. Tag " +
     "`common::serial()` som foerste linje i testen (den sandkasser " +
     "TALMINAL_HOME og TALMINAL_GLOBAL_HOME), eller peg stien et andet sted " +
-    "eksplicit.\n\nHvorfor det er alvorligt: rod-mapperne holder LEVENDE " +
+    "eksplicit.\n\nÉN UNDTAGELSE, saa raadet ikke sender dig forkert: " +
+    "`voice_capture::default_capture_path()` oploeser " +
+    "`%LOCALAPPDATA%\\Talminal\\voice-eval\\` direkte fra LOCALAPPDATA og " +
+    "respekterer HVERKEN TALMINAL_HOME eller TALMINAL_GLOBAL_HOME — dér " +
+    "hjaelper `serial()` ikke. Brug `reset_capture_at`/`append_capture_at` med " +
+    "en eksplicit sti.\n\nHvorfor det er alvorligt: rod-mapperne holder LEVENDE " +
     "global tilstand — settings.json opløses af project::global_base() og " +
     "bor praecis her. At forureningen indtil nu kun har ramt threads\\ er et " +
     "tilfaelde, ikke en beskyttelse.",

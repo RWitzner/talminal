@@ -47,6 +47,14 @@ test-seams = []
 # HashMap og forsvinder ved proces-exit. Binaeren raaber selv op om det (se
 # banneret i src/main.rs), men reglen staar her, hvor featuren vaelges.
 keyring-smoke = ["test-seams"]
+# De GLEMSOMME sonder i tests/data_dir_guard_negative.rs, som beviser at
+# scripts/data-dir-guard.mjs faktisk faelder noget. De skriver med vilje i den
+# LEVENDE datamappe og rydder ikke op efter sig (vagten skal jo se filen), saa
+# de er gatet paa samme maade som keyring-smoke: uden featuren bygges filen
+# slet ikke. `#[ignore]` alene var for svagt — `cargo test -- --ignored` er en
+# almindelig inkantation, og repoet dokumenterer den selv i
+# tests/perf_pty_output.rs.
+live-data-probe = []
 
 # Smoke-targetet bygges KUN med sin feature. Uden `required-features` ville
 # ritualets `cargo test` kompilere filen til en binaer med nul tests — stoej
@@ -56,6 +64,13 @@ keyring-smoke = ["test-seams"]
 name = "keyring_smoke"
 path = "tests/keyring_smoke.rs"
 required-features = ["keyring-smoke"]
+
+# Samme begrundelse: en test der findes for at forhindre utilsigtet skrivning
+# i den levende datamappe maa ikke selv vaere den nemmeste vej til at goere det.
+[[test]]
+name = "data_dir_guard_negative"
+path = "tests/data_dir_guard_negative.rs"
+required-features = ["live-data-probe"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
