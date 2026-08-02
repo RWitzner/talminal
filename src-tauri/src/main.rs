@@ -1877,6 +1877,26 @@ fn main() {
     //     visible, by two writers: the poller's Action::Reveal arm
     //     (workspaces/mod.rs) and Focused(true) — both via
     //     write_last_project_for_active
+    // T1: `test-seams` bytter secrets-backenden ud med en in-memory HashMap.
+    // Det er rigtigt under `cargo test` — og en tavs datatabs-faelde hvis
+    // nogen starter en binaer der er bygget med featuren (fx den
+    // `target/debug/talminal-canvas.exe` som `cargo test` selv efterlader).
+    // Appen ville se helt normal ud, brugeren ville indtaste sin API-noegle,
+    // og den ville vaere vaek ved exit. `compile_error!` duer ikke, fordi
+    // `cargo test` netop SKAL kunne bygge bin-targetet; saa kanalen er en
+    // dialog, af samme grund som M11 nedenfor: release har ingen konsol, og
+    // en advarsel man ikke ser, er ingen advarsel.
+    #[cfg(feature = "test-seams")]
+    {
+        let warning = "Talminal TEST-BUILD (test-seams)\n\n\
+             Denne binaer gemmer API-noegler i hukommelsen, ikke i Windows \
+             Credential Manager. Alt hvad du indtaster forsvinder naar \
+             appen lukkes.\n\n\
+             Byg uden `--features test-seams` for en rigtig app.";
+        eprintln!("{warning}");
+        show_startup_error(warning);
+    }
+
     let startup_home = match instance::resolve_startup_home() {
         Ok(h) => h,
         Err(e) => {

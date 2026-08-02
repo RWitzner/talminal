@@ -34,6 +34,28 @@ perf-trace = []
 # seams gates paa denne feature i stedet. Self-dev-dependency'en nedenfor goer
 # den aktiv under `cargo test` og KUN der — release-builds har den ikke.
 test-seams = []
+# OPT-IN smoke mod den AEGTE Windows Credential Manager (T1). Staar bevidst
+# IKKE i `default` og ikke i ritualets normale job: uden featuren kompileres
+# der ikke én linje kode der kan naa credential-storen fra en test, fordi
+# smoke-modulet i src/secrets/store.rs er cfg'et vaek. Smoken bruger service
+# "Talminal-smoke", aldrig "Talminal". Den implicerer `test-seams`, fordi den
+# ER en gren inde i seamet — uden det ville featuren ikke have et sted at bo.
+#
+# ADVARSEL: BEGGE disse features hoerer til `cargo test`, ALDRIG til
+# `cargo build`, `cargo run` eller `cargo tauri build`. Et byg med
+# `test-seams` taendt giver en app hvor brugerens noegler kun lever i en
+# HashMap og forsvinder ved proces-exit. Binaeren raaber selv op om det (se
+# banneret i src/main.rs), men reglen staar her, hvor featuren vaelges.
+keyring-smoke = ["test-seams"]
+
+# Smoke-targetet bygges KUN med sin feature. Uden `required-features` ville
+# ritualets `cargo test` kompilere filen til en binaer med nul tests — stoej
+# uden daekning — og en syntaksfejl i smoken ville alligevel foerst vise sig
+# naeste gang nogen huskede featuren.
+[[test]]
+name = "keyring_smoke"
+path = "tests/keyring_smoke.rs"
+required-features = ["keyring-smoke"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

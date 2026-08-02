@@ -1,5 +1,4 @@
-// Task 14 — keyring-secrets mod den AEGTE Windows Credential Manager
-// (service "Talminal", keyring 3 m. feature "windows-native" — ingen mock).
+// Task 14 — keyring-secrets' kontrakt, koert mod T1's in-memory-seam.
 //
 // Secrets-testcases (planens Step 1):
 //   (1) store→load roundtrip (inkl. overskrivning + non-ASCII-vaerdi)
@@ -10,16 +9,24 @@
 // tests/workspace.rs under B-light T4 (global settings.json +
 // WorkspaceResponse-DTO) — se settings_bor_globalt_ikke_i_workspace_json m.fl.
 //
-// VIGTIGT — secrets-testene skriver i brugerens rigtige Credential Manager:
-//   - ALDRIG produktionsnavnene "stt_api_key"/"router_api_key"; alle navne er
-//     test-specifikke og unikke pr. koersel (pid + nanos + taeller).
-//   - Hver test rydder op efter sig selv via en Drop-guard, som ogsaa koerer
-//     ved assert-panik (teardown-kravet).
+// T1: filen ramte indtil nu brugerens AEGTE Windows Credential Manager. Én
+// koersel efterlod fem nye poster, og 311 `talminal-test-*`-poster havde
+// ophobet sig. Under `test-seams` — som er slaaet til i HELE `cargo test` via
+// self-dev-dependency'en — gaar store/load/delete nu til in-memory-storen i
+// `secrets::store`, saa suiten kan koere paa en maskine helt uden en
+// Credential Manager. Den aegte keyring naas kun af tests/keyring_smoke.rs,
+// bag featuren `keyring-smoke` og under service "Talminal-smoke".
+//
+// Noeglenavnene forbliver unikke pr. koersel og pr. test: in-memory-storen er
+// proces-global, saa parallelle tests i samme binaer deler den ene map. Og de
+// forbliver test-specifikke — ALDRIG produktionsnavnene "stt_api_key"/
+// "router_api_key" — saa en test aldrig kan komme til at maale eller
+// overskrive en rigtig slot, uanset hvilken backend seamet peger paa.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use talminal_canvas_lib::secrets::{delete_secret, load_secret, store_secret};
+use talminal_canvas_lib::secrets::{delete_secret, load_secret, store, store_secret};
 
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -44,6 +51,88 @@ struct KeyGuard(String);
 impl Drop for KeyGuard {
     fn drop(&mut self) {
         let _ = delete_secret(self.0.clone());
+    }
+}
+
+/// Beviset for at seamet faktisk er den vej de oevrige tests koerer: den
+/// offentlige API skriver i IN-MEMORY-storen, ikke i OS'ets credential-store.
+/// Fejler denne, er hele filens ikke-invasivitet en paastand uden daekning.
+#[test]
+fn den_offentlige_api_skriver_i_in_memory_storen() {
+    let key = test_key("seam");
+    let _guard = KeyGuard(key.clone());
+
+    assert!(
+        !store::contains_key_for_test(&key),
+        "en frisk noegle maa ikke findes i forvejen"
+    );
+    store_secret(key.clone(), "kun-i-hukommelsen".to_string()).expect("store_secret");
+    assert!(
+        store::contains_key_for_test(&key),
+        "store_secret skal ramme in-memory-storen — ikke Credential Manager"
+    );
+
+    delete_secret(key.clone()).expect("delete_secret");
+    assert!(
+        !store::contains_key_for_test(&key),
+        "delete_secret skal fjerne noeglen fra in-memory-storen"
+    );
+}
+
+/// En mock der er MILDERE end det den erstatter, skjuler fejl i stedet for at
+/// finde dem. Windows afviser en credential-blob over 2560 bytes UTF-16
+/// (keyring-3.6.3/src/windows.rs:224), saa in-memory-storen skal afvise
+/// praecis dér — ellers er en test der gemmer en ~2 kB gateway-token groen
+/// her og roed i den byggede app.
+#[test]
+fn for_lang_vaerdi_afvises_som_i_credential_manager() {
+    let key = test_key("toolong");
+    let _guard = KeyGuard(key.clone());
+
+    // 1280 UTF-16-enheder = praecis loftet; én mere er over.
+    let paa_graensen = "a".repeat(1280);
+    store_secret(key.clone(), paa_graensen).expect("en vaerdi PAA loftet skal accepteres");
+
+    let over_graensen = "a".repeat(1281);
+    let err = store_secret(key.clone(), over_graensen)
+        .expect_err("en vaerdi over loftet skal afvises som i Credential Manager");
+    assert!(
+        err.contains("longer than platform limit of 2560"),
+        "fejlen skal vaere keyrings egen ordlyd, saa en assertion holder mod \
+         BEGGE backends — men var: {err}"
+    );
+
+    // Ikke-ASCII taeller i UTF-16-enheder, ikke i bytes: 'æ' er én enhed (2 B),
+    // saa 1280 af dem rammer ogsaa praecis loftet.
+    store_secret(key.clone(), "æ".repeat(1280)).expect("1280 UTF-16-enheder er paa loftet");
+    let err = store_secret(key, "æ".repeat(1281)).expect_err("1281 enheder er over");
+    assert!(err.contains("longer than platform limit of 2560"));
+}
+
+/// Noeglevalideringen er faelles for begge backends (`secrets::normalized_key`),
+/// saa denne test beviser ogsaa produktionens kontrakt: en tom eller kun-blanke
+/// noegle er en fejl paa alle tre veje, ikke en tavs no-op.
+#[test]
+fn tom_noegle_afvises_paa_alle_tre_veje() {
+    for blank in ["", "   ", "\t\n"] {
+        let store_err = store_secret(blank.to_string(), "v".to_string())
+            .expect_err("tom noegle maa ikke kunne gemmes");
+        assert!(
+            store_err.contains("must be non-empty"),
+            "uventet fejl fra store_secret: {store_err}"
+        );
+        let load_err =
+            load_secret(blank.to_string()).expect_err("tom noegle maa ikke kunne loades");
+        assert!(
+            load_err.contains("must be non-empty"),
+            "uventet fejl fra load_secret: {load_err}"
+        );
+        let delete_err =
+            delete_secret(blank.to_string()).expect_err("tom noegle maa ikke kunne slettes");
+        assert!(
+            delete_err.contains("must be non-empty"),
+            "uventet fejl fra delete_secret: {delete_err}"
+        );
     }
 }
 

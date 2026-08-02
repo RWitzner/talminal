@@ -19,9 +19,18 @@
 //!
 //! Noegle-VAERDIER krydser ALDRIG WebView-graensen. `load_secret`-commanden
 //! mapper Rust-vaerdien til `true`/`null`; Settings ser kun sat/ikke-sat.
+//!
+//! Test-seam (T1): under `test-seams` gaar store/load/delete til en in-memory
+//! store i `secrets::store` i stedet for OS'ets credential-store — se den
+//! fils modul-doc for hvorfor. Uden featuren findes seamet ikke, og vejen
+//! nedenfor er semantisk identisk med den fra foer seamet: samme trim, samme
+//! fejlstrenge, samme `Entry::new(SERVICE, key)`. Den ENESTE tekstlige
+//! aendring er at valideringen er trukket ud i `normalized_key`, saa de to
+//! backends ikke kan drifte fra hinanden.
 
 use std::sync::OnceLock;
 
+#[cfg(not(feature = "test-seams"))]
 use keyring::{Entry, Error as KeyringError};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -713,25 +722,72 @@ pub const KEY_STT_API_KEY: &str = "stt_api_key";
 pub const KEY_ROUTER_API_KEY: &str = "router_api_key";
 pub const KEY_GATEWAY_API_KEY: &str = "gateway_api_key";
 
-fn entry(key: &str) -> Result<Entry, String> {
+/// Test-seamet. Hele modulet er cfg'et vaek uden `test-seams` — se
+/// `store.rs`' modul-doc for hvorfor in-memory er DEFAULT og ikke opt-in.
+#[cfg(feature = "test-seams")]
+pub mod store;
+
+/// Faelles noegle-normalisering for BEGGE backends.
+///
+/// Ligger her og ikke i hver backend, saa kontrakten — trim, og tom noegle er
+/// en fejl — ikke kan drifte fra hinanden naar `test-seams` skifter vejen
+/// under testene. En test der beviser noget om noeglevalidering skal bevise
+/// det om produktionens validering.
+fn normalized_key(key: &str) -> Result<&str, String> {
     let key = key.trim();
     if key.is_empty() {
         return Err("secret key must be non-empty".to_string());
     }
+    Ok(key)
+}
+
+#[cfg(not(feature = "test-seams"))]
+fn entry(key: &str) -> Result<Entry, String> {
+    let key = normalized_key(key)?;
     Entry::new(SERVICE, key).map_err(|e| format!("keyring entry for '{key}' failed: {e}"))
 }
 
+// De tre offentlige funktioner er cfg-splittet i stedet for at kalde gennem en
+// trait eller en OnceLock-installeret backend. Grunden er "nul aftryk i
+// produktion": et dynamisk seam ville koste en dyn-dispatch (eller mindst en
+// atomisk OnceLock-check) paa hver eneste noegleoperation i release-buildet,
+// for en affordance der kun findes for testene. Med `test-seams` slaaet FRA
+// er produktionsvejen her semantisk identisk med foer seamet — `Entry::new(
+// SERVICE, key)` direkte, samme trim, samme fejlstrenge; kun valideringen er
+// flyttet til `normalized_key` ovenfor — og ingen af de to andre grene naar
+// rustc's typecheck overhovedet, fordi cfg-strippingen sker foer den.
+//
+// PRIS, som ritualet skal daekke: `cargo clippy --all-targets` traekker
+// dev-dependencies ind og taender dermed `test-seams` for hele pakken, saa
+// produktionsgrenen herunder er USYNLIG for den koersel. Ritualet og CI
+// koerer derfor ogsaa `cargo clippy` UDEN `--all-targets` (ingen dev-deps =
+// featuren slukket), saa keyring-vejen stadig bliver lintet.
+
 pub fn store_secret(key: String, value: String) -> Result<(), String> {
-    entry(&key)?
-        .set_password(&value)
-        .map_err(|e| format!("store_secret '{key}' failed: {e}"))
+    #[cfg(feature = "test-seams")]
+    {
+        store::store_secret(&key, &value)
+    }
+    #[cfg(not(feature = "test-seams"))]
+    {
+        entry(&key)?
+            .set_password(&value)
+            .map_err(|e| format!("store_secret '{key}' failed: {e}"))
+    }
 }
 
 pub fn load_secret(key: String) -> Result<Option<String>, String> {
-    match entry(&key)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(KeyringError::NoEntry) => Ok(None),
-        Err(e) => Err(format!("load_secret '{key}' failed: {e}")),
+    #[cfg(feature = "test-seams")]
+    {
+        store::load_secret(&key)
+    }
+    #[cfg(not(feature = "test-seams"))]
+    {
+        match entry(&key)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(KeyringError::NoEntry) => Ok(None),
+            Err(e) => Err(format!("load_secret '{key}' failed: {e}")),
+        }
     }
 }
 
@@ -740,9 +796,16 @@ pub fn secret_presence(value: Option<String>) -> Option<bool> {
 }
 
 pub fn delete_secret(key: String) -> Result<(), String> {
-    match entry(&key)?.delete_credential() {
-        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(e) => Err(format!("delete_secret '{key}' failed: {e}")),
+    #[cfg(feature = "test-seams")]
+    {
+        store::delete_secret(&key)
+    }
+    #[cfg(not(feature = "test-seams"))]
+    {
+        match entry(&key)?.delete_credential() {
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+            Err(e) => Err(format!("delete_secret '{key}' failed: {e}")),
+        }
     }
 }
 
