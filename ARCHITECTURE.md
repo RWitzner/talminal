@@ -1,6 +1,6 @@
 # Talminal — arkitektur
 
-Ét kort over kodebasen, skrevet til dig der lige har klonet og står i 97 Rust-filer.
+Ét kort over kodebasen, skrevet til dig der lige har klonet og står i godt 100 Rust-filer.
 Hver påstand her er læst i koden, ikke hentet fra en spec. Er noget uenigt med koden,
 er koden rigtig — og så er det en fejl i denne fil.
 
@@ -116,11 +116,15 @@ Playwright-MCP der peger på kortets eget CDP-endpoint.
 | Deterministisk dispatch til Tauri-kommandoer | `src/voice/dispatch.ts` |
 | Svar som ét af 14 forudindspillede klip | `src/voice/replies.ts` |
 
-**Ruterne bor ét sted.** `providers.rs` er den eneste kilde til endpoints, modelnavne og
-nøgle-slots: `STT_ROUTES` (1 rute) og `ROUTER_ROUTES` (4 ruter), plus de fire
-`KEY_SLOT_*`-navne (`providers.rs:71-74`). Frontenden har ingen kopi. Nøglerne selv ligger
-i Windows Credential Manager under service `"Talminal"` (`secrets.rs:715`) og krydser
-**aldrig** WebView-grænsen — `load_secret`-kommandoen svarer `true`/`null`, ikke værdien.
+**Ruterne bor ét sted — men navnene gør ikke.** `providers.rs` er den eneste kilde til
+endpoints og modelnavne: `STT_ROUTES` (1 rute) og `ROUTER_ROUTES` (4 ruter). De når fladen
+over wiren (`resolve_voice_routes`, `workspace.rs:66` → `voice_routes`, `types.ts:123`),
+så dér er der ingen kopi at holde synkron. Undtagelsen er **navnene**: de fire
+`KEY_SLOT_*` (`providers.rs:71-74`) står ordret igen i `src/Settings.tsx:35-38`, og de fire
+router-slugs i `ROUTING_CHOICES` (`Settings.tsx:498`). Tilføjer du en udbyder, skal begge
+sider røres. Nøglerne selv ligger i Windows Credential Manager under service `"Talminal"`
+(`secrets.rs:718`) og krydser **aldrig** WebView-grænsen — `load_secret`-kommandoen svarer
+`true`/`null`, ikke værdien.
 
 ## Tilstand på disken
 
@@ -146,8 +150,10 @@ netop det testsandkassen bruger. Se `src-tauri/tests/common/mod.rs` og
 ## Agent-profil-seamet — start her, hvis du vil tilføje en agent
 
 `profiles.rs` er den ene tabel der beskriver *hvad en agent er*. Den er rene `static`-data
-plus fire opslagsfunktioner, uden låse og uden IO ud over env — derfor er den helt
-unit-testbar.
+plus fire opslagsfunktioner og uden låse — derfor er den næsten helt unit-testbar. To af
+dem rører filsystemet, og det er værd at vide når du skriver en test: `resolve_spawn_program`
+søger PATH igennem (`profiles.rs:240`) og codex-fallbacken læser npm-vendor-mappen
+(`profiles.rs:170`). Resten er ren opslag.
 
 `AgentProfile` (`profiles.rs:23`), felt for felt, med den der faktisk læser det:
 

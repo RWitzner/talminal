@@ -44,7 +44,8 @@ Nogle få fejl udgør de fleste rapporter:
 
 - **Andet end Windows 11 x64.** ConPTY, Credential Manager og WebView2 er alle i den
   kritiske sti.
-- **Andre sprog end dansk i stemmevejen.** STT'en kører med `language_code: da`.
+- **Andre sprog end dansk i stemmevejen.** STT'en er låst til dansk (`language: "da"`,
+  `src/voice/stt.ts:136`).
   Engelsk er ønsket, men ikke bygget.
 - **Andre agenter end Claude Code og Codex CLI.** Mekanismen til at tilføje en er
   beskrevet i [ARCHITECTURE.md](ARCHITECTURE.md), hvis du vil prøve.
