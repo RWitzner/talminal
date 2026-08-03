@@ -140,10 +140,14 @@ mangler.
   der sendes ingen politik. Der er ingen kendt vej ind i hoved-webview'et — agent-output
   skrives som tekstnoder, ikke HTML, og browser-kort er separate webviews — så dette er
   manglende dybdeforsvar, ikke en åben sårbarhed.
-- **Release-binærerne indeholder byggemaskinens brugernavn** i ~60 stier fra `aws-lc`'s
-  C-kode. Rust-siden er neutraliseret (`scripts/release-build.mjs`), men C-oversætterens
-  `__FILE__`-strenge nås ikke af rustc's flag. Det udleverer et brugernavn og et
-  mappe-layout, ikke andet.
+- **Release-binærerne indeholder byggemaskinens brugernavn.** `scripts/release-build.mjs`
+  fjerner ~94 % (talminal-canvas.exe: 930 → 84 forekomster), men to kilder kan et
+  rustc-flag ikke nå: strenge en crate selv har bygget af `env!("CARGO_MANIFEST_DIR")`
+  eller skrevet ud fra et build-script, og `aws-lc`'s C-oversættelsesenheder, der bærer
+  deres egne `__FILE__`. Det udleverer et brugernavn og et mappe-layout — og det navn står
+  i forvejen i `authors`, i repo-URL'en og på npm, så den marginale afsløring er lille.
+  **Den fulde løsning er ikke et flag, men en byggesti uden brugernavn** (klon til fx
+  `C:\src\talminal` med `CARGO_HOME=C:\cargo`); så bliver tallet nul af sig selv.
 
 Finder du noget der ikke står her, så rapportér det ad kanalen ovenfor.
 
