@@ -148,6 +148,43 @@ næste der kigger ved at det er vejet og ikke overset:
 
 Skiftes billedet ud, opdateres denne liste i samme pull request.
 
+## HUD-udsnit — `assets/hud.png`
+
+231×67 PNG, 13687 B, SHA-256 (16) `1a35a2d94942e5ac`. Sidder i [README.md](README.md)s
+afsnit om statusline-tap'en.
+
+**Det her er et ægte skærmbillede** — modsat heroen ovenfor. Udsnit af den kørende app,
+taget på ejerens maskine 2026-08-03, kopieret råt ind uden beskæring eller re-encode.
+
+Motivet er de to forbrugsbjælker som `statusline-tap/` fylder i HUD'en: 5-timers-vinduet
+og uge-vinduet, med procent og resttid. Tallene er ejerens eget Claude Code-forbrug i det
+øjeblik billedet blev taget — de siger intet om hvad du selv vil se.
+
+Billedet er saniteret ved at være et udsnit: der er ingen stier, navne, mailadresser eller
+projektdata i det. Rettighedsgrundlag: lavet til projektet, dækket af [LICENSE](LICENSE)
+som resten af repoet.
+
+## Windows 11-logoet — `assets/windows11.svg`
+
+Sidder i [README.md](README.md)s undertitel efter ordene *"Kun til"*. Det er hele
+wordmark'et — de fire firkanter og skrifttrækket *Windows 11* som vektorpaths.
+
+- Kilde: [Wikimedia Commons, `Windows_11_logo.svg`](https://commons.wikimedia.org/wiki/File:Windows_11_logo.svg)
+- Hentet: 2026-08-03, 3154 B, uændret
+- SHA-256 (16): `e8a33c4612b2ade2`
+- Ophavsret: **ingen.** Commons fører filen som *public domain* (`Copyrighted = False`) —
+  værket er under tærsklen for værkshøjde.
+- Varemærke: **ja.** Commons' egen optegnelse siger `Restrictions = trademarked`.
+  Ordmærket og logoet tilhører Microsoft Corporation.
+
+**Derfor står det som det gør.** Logoet bruges nominativt — til at oplyse hvilken platform
+Talminal kører på, hvilket er den ene brug et varemærke ikke kan forhindre. Af samme grund
+er filen kopieret råt ind: farven er Microsofts egen (`#0078d4`), og den skal blive dér.
+Et omfarvet eller ombygget varemærke er en dårligere idé end at lade være.
+
+**Talminal er ikke tilknyttet, godkendt af eller sponsoreret af Microsoft.** Logoet siger
+hvor appen kører — ikke hvem der står bag den.
+
 ## Hvis du tilføjer et aktiv
 
 Skriv det ind her med kilde, tidspunkt og rettighedsgrundlag i samme pull request. Et

@@ -6,8 +6,7 @@
 
 **Tal med dine terminaler.**<br/>
 Et canvas af agent-terminaler — Claude Code og Codex CLI — som du styrer med stemmen.<br/>
-Sig *"opret to kort"*, *"send: kør testene"*, *"luk kort tre"*, og se dem arbejde<br/>
-ved siden af hinanden. Til Windows 11.
+Kun til <img src="assets/windows11.svg" alt="Windows 11" width="98" height="18">
 
 [![][license-shield]][license-link]
 ![][windows-shield]
@@ -30,13 +29,98 @@ skærmbillede. Proveniens, rettighedsgrundlag og hvad billedet indeholder står 
 ASSETS.md. En demo-GIF af den kørende app er stadig ønsket, men hører efter v0.1.
 -->
 
-> **English notice:** the voice pipeline currently understands **Danish only** — English
-> support is planned. Everything else works in English: the app is usable with mouse and
-> keyboard without any voice keys, and English issues and pull requests are very welcome.
-> The docs and the code comments are in Danish; see
-> [CONTRIBUTING.md](.github/CONTRIBUTING.md).
-
 ---
+
+## Sådan virker det
+
+Canvas'et er et gitter af **nummererede kort**. Hvert kort er en rigtig agent-terminal —
+Claude Code eller Codex CLI — og **nummeret er det du taler til.**
+
+Hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan ændres under
+Indstillinger → Stemme. Stemmen er en genvej, ikke en betingelse: et kort kan også oprettes
+med musen ved at **dobbeltklikke på tom canvasflade.**
+
+Canvas **starter altid tomt.** Dine projektfiler og agenternes egne tråde overlever, men
+korttopologien gendannes ikke — det er en udtalt kontrakt, ikke en fejl.
+
+### Kortet har fire navne
+
+Du skal ikke huske ét bestemt ord. **`kort`**, **`terminal`**, **`agent`** og **`canvas`**
+betyder præcis det samme, når der står et nummer efter:
+
+| Du siger | Den hører |
+|---|---|
+| *"Luk kort to."* | luk kort 2 |
+| *"Luk agent to."* | luk kort 2 |
+| *"Luk canvas to."* | luk kort 2 |
+| *"Genstart terminal fire."* | genstart kort 4 |
+
+Ordvalget ændrer aldrig kommandoen — kun tallet udpeger kortet.
+
+To undtagelser er værd at kende:
+
+- **`canvas` uden et tal** er selve fladen, ikke alle kort. *"Luk canvas"* lukker derfor
+  ingenting — den spørger hvilket kort du mener. Kun ordet **"alle"** rammer alle:
+  *"Luk alle kort."*
+- **I en oprettelse navngiver `agent` modellen**, ikke et kort: *"Åbn et kort med agent
+  codex"* giver ét Codex-kort.
+
+### De fem ting du kan sige
+
+| | Eksempel |
+|---|---|
+| **Opret kort** | *"Åbn tre terminaler."* · *"Nyt codex-kort."* |
+| **Send en besked** | *"Send til kort et: kør testene."* · *"Spørg kort tre hvor langt den er."* |
+| **Luk kort** | *"Luk kort to og tre."* · *"Luk alle kort."* |
+| **Genstart et kort** | *"Genstart kort fire."* |
+| **Åbn en browser** | *"Åbn en browser på GitHub."* |
+
+Nævner du hverken `claude` eller `codex`, bruges din standard-agent — `claude`, indtil du
+ændrer den. Andre modelord (`gpt`, `gemini`) vælger ikke en agent; de falder tilbage til
+standarden.
+
+**Du kan kæde dem sammen,** og de udføres i den rækkefølge du sagde dem: *"Luk kort to og
+genstart kort tre."* Højst ti kommandoer og ti nye kort pr. sætning.
+
+### Hvad den med vilje ikke gør
+
+Den siger hellere fra end at gætte:
+
+- **Spørgsmål uden et sende-verbum.** *"Hvad laver kort tre?"* gør ingenting — det er ikke
+  en kommando. Sig *"Spørg kort tre hvad den laver"*, så bliver det en besked til kortet.
+- **Fokus og navigation.** *"Gå til kort fem"* og *"zoom ind"* findes ikke som stemmekommandoer.
+- **Mapper og projektnavne.** *"Nyt kort i webshop-mappen"* afvises. Canvas'et **er**
+  projektet, og den gætter aldrig en placering.
+- **Rettelser midt i en sætning.** *"Genstart… nej, luk kort tre"* afvises som helhed frem
+  for at udføre halvdelen. Sig det forfra.
+
+Er den ikke sikker nok på hvad du sagde, gør den ingenting i stedet for noget forkert.
+
+### Når to agenter skal sparre
+
+Et kort kan hente et andet kort ind som sparringspartner. Agenten gør det selv gennem
+**Talminals egen MCP-server**, som er registreret hos begge agenter under navnet
+**`talminal`**. Den giver dem syv værktøjer: fire til browser-kort og tre til at tale
+sammen — `card_pair`, `card_say` og `card_inbox`.
+
+**Skriv det ind i din prompt.** Din agent har som regel flere veje der *lyder* rigtige —
+Playwrights egne faner, Claude in Chrome, eller bare at skrive i sin egen terminal — og
+vælger den en af dem, sker der ingenting du kan se. Så vær eksplicit:
+
+> *"Par dig med et codex-kort gennem `talminal`-MCP'en og spar med den om X. Svar med
+> `card_say`, og læs dens svar med `card_inbox`."*
+
+Det samme gælder browsere: bed den om at åbne et **browser-kort** frem for at bruge sine
+egne fane-værktøjer. Værktøjsbeskrivelserne siger det allerede til agenten, men en linje i
+din egen prompt fjerner tvivlen.
+
+Grænserne, så du ikke undrer dig over dem undervejs:
+
+- **To partnerkort pr. app-session**, talt kumulativt — lukker du ét, får du ikke pladsen
+  tilbage. Et kort der selv blev oprettet af en parring, må ikke parre videre.
+- **20 hop pr. tråd** mellem agenterne. Dine egne beskeder tæller ikke med.
+- **En ubesvaret delegation udløber** — efter fem minutters stilstand, og senest efter tyve.
+- Svarer en agent i sin egen terminal i stedet for gennem tråden, **når det ingen.**
 
 ## Installation
 
@@ -125,19 +209,9 @@ omkring dobbelt så langsom som standardruten — 1,3 s mod 0,77 s i median. Beg
 ikke er svaret endnu. Det giver lejlighedsvis to fakturerbare requests pr. ytring. De
 øvrige ruter gør det ikke. Se [PRIVACY.md](docs/PRIVACY.md).
 
-## Sådan bruger du den
-
-- **Opret et kort:** dobbeltklik på tom canvasflade — eller sig det.
-- **Tal til den:** hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan
-  ændres under Indstillinger → Stemme.
-- **Kortnumre er dit ordforråd.** *"Luk kort to og tre."* *"Send til kort et: kør
-  testene."* *"Genstart codex-kortet."*
-- **Browser-kort** åbnes af agenten selv via MCP, når den har brug for at se en side.
-
-Canvas **starter altid tomt**. Dine projektfiler og agenternes egne tråde overlever, men
-korttopologien gendannes ikke — det er en udtalt kontrakt, ikke en fejl.
-
 ## Statusline-tap (valgfri)
+
+<img src="assets/hud.png" alt="HUD'ens forbrugsmåler: 5T står på 3 % med 3t58m tilbage, UGE på 53 % med 2d5t tilbage" width="231" height="67">
 
 Vil du se Claude Codes forbrugsprocenter i canvas'ens HUD, kan du installere en tap:
 
