@@ -89,7 +89,7 @@ svagheder nedenfor.
 
 Appen taler med de endpoints der står i `src-tauri/src/providers.rs`, og med de sider du
 selv åbner i browser-kort. Der er ingen telemetri og ingen phone-home. Se
-[PRIVACY.md](PRIVACY.md) for hvad der sendes hvorhen.
+[PRIVACY.md](../docs/PRIVACY.md) for hvad der sendes hvorhen.
 
 ## Kendte, uadresserede svagheder
 

@@ -32,11 +32,9 @@ Derfor, eksplicit:
 > ElevenLabs' vilkår — ikke til denne fil og ikke til Apache-2.0.
 
 Er du i tvivl, eller vil du gøre noget der ikke klart er dækket ovenfor: **regenerér dem
-selv.** Så er de dine, under din egen konto, og hele spørgsmålet bortfalder.
-
-**Du kan regenerere dem selv.** `voice-eval/gen-reply-clips-elevenlabs.mjs` er
-generatoren; sæt `ELEVENLABS_API_KEY` og kør den. Så er klippene dine, under din egen
-konto. Scriptet er en service, ikke en nødløsning.
+selv.** `voice-eval/gen-reply-clips-elevenlabs.mjs` er generatoren; sæt
+`ELEVENLABS_API_KEY` og kør den. Så er klippene dine, under din egen konto, og hele
+spørgsmålet bortfalder. Scriptet er en service, ikke en nødløsning.
 
 ### Generationsparametre
 
@@ -145,7 +143,7 @@ næste der kigger ved at det er vejet og ikke overset:
 - En advarsel om en MCP-server der mangler autentificering, og `permissions: YOLO mode` i
   Codex-kortet. **Det sidste er værd at kende:** billedet viser en agent der kører med
   tilladelser slået fra. Det er brugerens egen codex-opsætning — Talminal sender ingen
-  tilladelses-flag, og [SECURITY.md](SECURITY.md) siger det ligeud — men det er altså ikke
+  tilladelses-flag, og [SECURITY.md](.github/SECURITY.md) siger det ligeud — men det er altså ikke
   en anbefaling, det er et øjebliksbillede af én maskine.
 
 Skiftes billedet ud, opdateres denne liste i samme pull request.

@@ -58,6 +58,7 @@ npm ci          # kun nødvendig efter en frisk klon eller et skift i package-lo
 npm run build
 npx vitest run
 node scripts/repo-scan.mjs
+node scripts/link-check.mjs
 node scripts/data-dir-guard.mjs verify
 ```
 
@@ -71,6 +72,7 @@ Forventningen, målt 2026-08-03:
 | `npm run build` | `0/30 forbidden strings` |
 | `cargo fmt --check` og alle tre clippy | **nul output** |
 | `node scripts/repo-scan.mjs` | 0 uklassificerede hits |
+| `node scripts/link-check.mjs` | alle relative links findes |
 | `node scripts/data-dir-guard.mjs verify` | `er uroert af testsuiten — OK` |
 
 Tallene **vokser** når du tilføjer tests. Det er tilvækst, ikke regression. Det der ikke
@@ -134,7 +136,7 @@ datamappe — kør dem ikke uden at læse filens hoved-kommentar først.
 
 ## Licens på det du bidrager med
 
-Projektet er under [Apache License 2.0](LICENSE). **Ved at åbne en pull request erklærer
+Projektet er under [Apache License 2.0](../LICENSE). **Ved at åbne en pull request erklærer
 du, at dit bidrag leveres under samme licens** (inbound = outbound), og at du har ret til
 at bidrage med det. Der er ingen CLA at underskrive.
 
@@ -145,7 +147,7 @@ Fandt du et sikkerhedsproblem, så åbn **ikke** et almindeligt issue. Se
 
 ## Hvor du finder rundt
 
-[ARCHITECTURE.md](ARCHITECTURE.md) er ét kort over kodebasen: hvad kortene, PTY'en, MCP'en,
+[ARCHITECTURE.md](../docs/ARCHITECTURE.md) er ét kort over kodebasen: hvad kortene, PTY'en, MCP'en,
 browser-værten og voice-pipelinen er, og hvor de bor. Vil du tilføje en agent, står
 mekanismen der — det er `src-tauri/src/profiles.rs` du skal kigge på.
 

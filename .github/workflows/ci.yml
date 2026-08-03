@@ -141,6 +141,14 @@ jobs:
         shell: bash
         run: node scripts/repo-scan.mjs --verbose
 
+      # Doede relative links i dokumentationen. Ingen compiler laeser markdown,
+      # saa en flytning eller omdoebning braekker dem TAVST - fejlen opdages
+      # ellers foerst af en fremmed der klikker. Gaten fandt tre paa sin
+      # foerste koersel, foer den overhovedet blev brugt til noget.
+      - name: Doede links i dokumentationen
+        shell: bash
+        run: node scripts/link-check.mjs
+
       # SIDSTE step, uanset hvad der gik forud: fejlede en test, vil vi stadig
       # vide om den naaede at skrive uden for repoet.
       - name: data-dir-guard verify (SIDSTE step)

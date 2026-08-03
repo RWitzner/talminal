@@ -60,7 +60,7 @@ De vigtigste filer under `%LOCALAPPDATA%\Talminal\` — listen er ikke udtømmen
 Bygger du med `--features supervision`, kommer `signals\` og `presence\` oveni.
 
 Dine **API-nøgler** ligger ikke her, men i Windows Credential Manager under service
-`Talminal`. Se [SECURITY.md](SECURITY.md) for hvad det beskytter mod.
+`Talminal`. Se [SECURITY.md](../.github/SECURITY.md) for hvad det beskytter mod.
 
 **Én undtagelse, så den sætning ikke misforstås:** `worker-mcp\<kort>.json` ovenfor
 bærer et `Authorization: Bearer …`-token. Det er *ikke* en API-nøgle til en udbyder — det
