@@ -210,6 +210,32 @@ fn emit_worker_degraded(app: &AppHandle, card: &str, reason: &str) {
         "worker-browser-tools-degraded",
         serde_json::json!({ "card": card, "reason": reason }),
     );
+    // NB: her ryddes KUN tokenet — configfilen roeres bevidst ikke.
+    // `emit_worker_degraded` er ikke en afslutning (workeren koerer videre,
+    // bare uden tools), og den ligger i H1-racens mellem-vindue, hvor en taber
+    // ikke maa have sideeffekter paa vinderens fil. Se `spawn_into`s doc og
+    // `release_card_identity` nedenfor.
+}
+
+/// Frigiver et korts identitet paa en AFSLUTNINGSVEJ: MCP-tokenet ryddes fra
+/// registryet, OG worker-mcp-configfilen fjernes fra disken.
+///
+/// De to hoerer sammen, fordi filen BAERER tokenet
+/// (`"Authorization": "Bearer …"`). Et ryddet token uden en fjernet fil
+/// efterlader en credential-formet fil paa disken som enhver proces under
+/// samme bruger kan laese — inklusive de andre agent-kort, der pr. definition
+/// har shell. Maalt foer gate 8: en `card-1.json` overlevede baade kort-luk og
+/// app-exit i 16 timer.
+///
+/// At de to handlinger bor ét sted er selve pointen: der er seks
+/// afslutningsveje i denne fil, og en syvende kan ikke komme til at huske den
+/// ene halvdel og glemme den anden.
+///
+/// **Bruges IKKE af `emit_worker_degraded`** — den er ikke en afslutning, og
+/// den ligger i H1-racens mellem-vindue.
+fn release_card_identity(card: &str) {
+    mcp::clear_card_token(card);
+    worker_mcp::remove_config(card);
 }
 
 /// Payload for "card-spawn-failed" (N4, spec brief T9) — udtrukket som ren
@@ -673,7 +699,7 @@ fn spawn_into(app: &AppHandle, name: &str, use_resume: bool) -> Result<(), Strin
             // selve PTY-spawnet fejlede — den doede koersel maa ikke
             // efterlade et gyldigt token. Idempotent for ClaudeFlags/ingen
             // injektion.
-            mcp::clear_card_token(name);
+            release_card_identity(name);
             return Err(error.to_string());
         }
     };
@@ -776,7 +802,7 @@ fn start_exit_watcher(
             // B3: naturlig proces-exit er en afslutningsvej — naaes kun her
             // naar `is_watched` bekraeftede at det VAR den aktive koersel for
             // dette kortnavn, saa tokenet (hvis noget) skal ryddes nu.
-            mcp::clear_card_token(&name);
+            release_card_identity(&name);
             // Sessionen doede af sig selv. Kortlaasen er sluppet ovenfor, saa
             // tallet kan genberegnes her (laaseorden) — ellers ville
             // lukke-bekraeftelsen advare om en koerende session der er doed.
@@ -965,7 +991,7 @@ async fn kill_card(app: AppHandle, name: String) -> Result<(), String> {
         }; // kort-låsen slippes FØR teardown (fix F2)
            // B3: kill er en afslutningsvej — kortets token (hvis noget) maa
            // ikke overleve den drabte koersel.
-        mcp::clear_card_token(&name);
+        release_card_identity(&name);
         // Operatoer-drab fjerner en levende session uden at gaa gennem
         // close_cards_persisted. Kortlaasen er sluppet, saa tallet genberegnes
         // her (laaseorden) — ellers ville status.json blive staaende og advare
@@ -1124,7 +1150,7 @@ async fn create_card_impl(
                     // er dette baelte + seler — spawn_into rydder selv paa
                     // sin ene tilbagevaerende fejlvej — men clear er
                     // idempotent, og vagten daekker fremtidige fejlveje.
-                    mcp::clear_card_token(&info.name);
+                    release_card_identity(&info.name);
                     eprintln!("[canvas] create: card '{}' not autostarted: {e}", info.name);
                     let _ = app.emit(
                         "card-spawn-failed",
@@ -1268,7 +1294,7 @@ async fn close_cards_impl(
             // faktisk blev detached fra registryet (kaskaden kan omfatte
             // browser-kort uden token; clear er idempotent).
             for closed_name in &result.closed {
-                mcp::clear_card_token(closed_name);
+                release_card_identity(closed_name);
             }
             workspaces::status::refresh_card_counts();
             Ok(result)
@@ -2224,6 +2250,9 @@ fn main() {
             // registry-/webview-backede HostOps (Task 4's flade); (3) start
             // reconciliation-/liveness-polleren (den ENESTE doeds-detektor, S7).
             browser::sweep_profiles();
+            // Gate 8: samme kontrakt som profil-sweepet. Daekker de
+            // afslutningsveje et haardt exit eller et crash aldrig koerte.
+            worker_mcp::sweep_configs();
             let host_ops = Arc::new(browser_host::HostOps {
                 app: app.handle().clone(),
             });
