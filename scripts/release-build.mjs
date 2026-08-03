@@ -76,7 +76,17 @@ if (!check) {
     `--remap-path-prefix=${repoRoot}=/talminal`,
   ].join(' ')
   console.log(`release-build: RUSTFLAGS=${flags}`)
-  execFileSync('cargo', ['build', '--release', '--locked'], {
+  // `--features tauri/custom-protocol` er IKKE valgfri. Uden den serverer
+  // binaeren ikke den indlejrede frontend, men forsoeger at loade `devUrl`
+  // (Vite paa localhost:1420) — og en bruger uden en koerende dev-server
+  // faar ERR_CONNECTION_REFUSED i stedet for en app. `tauri build` saetter
+  // den selv; `cargo build` goer ikke, og her kalder vi cargo direkte for at
+  // kunne saette RUSTFLAGS.
+  //
+  // Fundet 2026-08-03 ved at sammenligne med ejerens egen `talminal-update`,
+  // som har flaget og en kommentar om praecis denne fejl. De to byggeveje
+  // var uenige, og npm-tarballen blev pakket med den forkerte.
+  execFileSync('cargo', ['build', '--release', '--locked', '--features', 'tauri/custom-protocol'], {
     cwd: tauriDir,
     stdio: 'inherit',
     env: { ...process.env, RUSTFLAGS: `${process.env.RUSTFLAGS ?? ''} ${flags}`.trim() },
