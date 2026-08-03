@@ -82,7 +82,15 @@ pub static CODEX_READINESS: ReadinessSpec = ReadinessSpec {
 pub const NESTED_SCRUB: &[&str] = &["CLAUDECODE", "CLAUDE_CODE_*", "CODEX_SANDBOX*"];
 
 /// Matcher et env-var-navn mod NESTED_SCRUB-moenstrene.
+///
+/// Navnet normaliseres til uppercase FOER match. Windows' miljoeblok bevarer
+/// den casing en variabel blev sat med, mens opslag er case-insensitivt — og
+/// moenstrene her er uppercase. Uden normaliseringen slap `claudecode` forbi,
+/// og barneprocessen saa sig selv som nested child-session alligevel.
+/// Normaliseringen sker HER frem for hos kalderen, saa funktionen er korrekt
+/// for enhver kalder.
 pub fn nested_scrub_matches(name: &str) -> bool {
+    let name = name.to_ascii_uppercase();
     NESTED_SCRUB.iter().any(|pat| match pat.strip_suffix('*') {
         Some(prefix) => name.starts_with(prefix),
         None => name == *pat,
@@ -278,6 +286,14 @@ mod tests {
         assert!(!nested_scrub_matches("CLAUDECODE_X")); // exact, ikke prefix
         assert!(!nested_scrub_matches("CLAUDE_MODEL")); // uden for begge moenstre
         assert!(!nested_scrub_matches("CLAUDE"));
+        // Case-insensitivt (gate 9): Windows bevarer den casing variablen blev
+        // sat med, saa lowercase-varianter skal ramme de samme moenstre.
+        assert!(nested_scrub_matches("claudecode"));
+        assert!(nested_scrub_matches("claude_code_entrypoint"));
+        assert!(nested_scrub_matches("Codex_Sandbox_Probe"));
+        // ... og normaliseringen maa ikke goere matchen bredere.
+        assert!(!nested_scrub_matches("claude_model"));
+        assert!(!nested_scrub_matches("claude"));
     }
 
     #[test]
