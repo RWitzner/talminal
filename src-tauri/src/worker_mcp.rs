@@ -78,6 +78,47 @@ pub fn write_config(
     Ok(path)
 }
 
+/// Fjerner `{worker-mcp-dir}/{card_name}.json`.
+///
+/// Filen BAERER tokenet (`"Authorization": "Bearer …"`), saa den hoerer sammen
+/// med `mcp::clear_card_token`: et ryddet token uden en fjernet fil efterlader
+/// en credential-formet fil paa disken, som enhver proces under samme bruger
+/// kan laese — inklusive de ANDRE agent-kort, der pr. definition har shell.
+/// Maalt foer dette blev skrevet: en `card-1.json` overlevede baade kort-luk
+/// OG app-exit i 16 timer.
+///
+/// Idempotent: en manglende fil er ikke en fejl. Ikke alle kort faar en config
+/// (browser-kort skriver ingen, og codex-vejen leverer identiteten via env),
+/// og afslutningsvejene kan ramme samme kort mere end én gang.
+///
+/// **Kaldes kun fra afslutningsveje.** Se `main::release_card_identity`.
+pub fn remove_config(card_name: &str) {
+    let path = worker_mcp_dir().join(format!("{card_name}.json"));
+    match std::fs::remove_file(&path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => eprintln!(
+            "[canvas] worker-mcp: kunne ikke fjerne {}: {e}",
+            path.display()
+        ),
+    }
+}
+
+/// App-start-sweep: hele worker-mcp-mappen ryddes.
+///
+/// Daekker det `remove_config` paa afslutningsvejene ikke kan naa — et haardt
+/// exit, et crash eller et strømsvigt efterlader filer som ingen afslutning
+/// koerte for. Uden den ville et enkelt crash goere token-filen permanent.
+/// Best-effort, samme kontrakt som `browser::sweep_profiles`: laaste filer
+/// efterlades til naeste sweep.
+///
+/// Sikker fordi configen skrives pr. spawn (`write_config` i `spawn_into`s
+/// fase 2), ikke laeses fra en tidligere session — og tokenet i en gammel fil
+/// er alligevel doedt, da `mcp`'s registry er in-proces.
+pub fn sweep_configs() {
+    let _ = std::fs::remove_dir_all(worker_mcp_dir());
+}
+
 /// Codex-varianten af MCP-injektionen (spike-vej i, end-to-end-verificeret):
 /// per-invocation `-c`-overrides — INGEN config.toml-mutation, INGEN config-fil.
 /// Kort-identiteten leveres som Bearer-token via env (bearer_token_env_var).
