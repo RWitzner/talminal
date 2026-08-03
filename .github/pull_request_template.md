@@ -32,12 +32,12 @@ Appen var lukket under kørslen: <!-- ja / nej -->
       `common::serial()` som første linje
 - [ ] Ingen ændring i `version`-felterne (`package.json`, `Cargo.toml`, `tauri.conf.json`)
 - [ ] Ingen personlige stier, mails eller nøgler — `repo-scan.mjs` er grøn
-- [ ] Rører ændringen dataflowet, er [PRIVACY.md](../blob/main/PRIVACY.md) opdateret i
+- [ ] Rører ændringen dataflowet, er [PRIVACY.md](https://github.com/RWitzner/talminal/blob/main/PRIVACY.md) opdateret i
       samme PR
 - [ ] Tilføjer den et medieaktiv, står proveniensen i
-      [ASSETS.md](../blob/main/ASSETS.md)
+      [ASSETS.md](https://github.com/RWitzner/talminal/blob/main/ASSETS.md)
 
 ## Licens
 
-- [ ] Jeg leverer mit bidrag under [Apache-2.0](../blob/main/LICENSE), samme licens som
+- [ ] Jeg leverer mit bidrag under [Apache-2.0](https://github.com/RWitzner/talminal/blob/main/LICENSE), samme licens som
       projektet, og jeg har ret til at bidrage med det

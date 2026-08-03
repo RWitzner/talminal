@@ -5,7 +5,7 @@ Hver påstand her er læst i koden, ikke hentet fra en spec. Er noget uenigt med
 er koden rigtig — og så er det en fejl i denne fil.
 
 Dokumentet er på dansk, ligesom doc-kommentarerne i kildekoden. Se
-[CONTRIBUTING.md](CONTRIBUTING.md) for hvorfor, og for at engelske issues og PR'er er
+[CONTRIBUTING.md](../.github/CONTRIBUTING.md) for hvorfor, og for at engelske issues og PR'er er
 velkomne.
 
 ## Hvad produktet er
@@ -84,7 +84,7 @@ agentens tekstfelt har modtaget teksten. Gabet mellem de to writes kommer fra pr
 
 **Env-politikken ved spawn** (`pty.rs:215-229`): en ubetinget nested-scrub
 (`CLAUDECODE`, `CLAUDE_CODE_*`, `CODEX_SANDBOX*` — `profiles.rs:82`) plus profilens
-to-lags deny-liste. Kontrakten er ærlig og står i [SECURITY.md](SECURITY.md): **et kort
+to-lags deny-liste. Kontrakten er ærlig og står i [SECURITY.md](../.github/SECURITY.md): **et kort
 giver agenten præcis samme adgang som en terminal åbnet i det workspace** — hverken mere
 eller mindre. Deny-listen er oprydning, ikke en sandkasse.
 
@@ -145,7 +145,7 @@ request/ack-protokol, hvis rene tilstandsmaskine ligger uden IO i
 
 Begge env-variabler (`TALMINAL_HOME`, `TALMINAL_GLOBAL_HOME`) kan overrides — det er
 netop det testsandkassen bruger. Se `src-tauri/tests/common/mod.rs` og
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](../.github/CONTRIBUTING.md).
 
 ## Agent-profil-seamet — start her, hvis du vil tilføje en agent
 
@@ -206,4 +206,4 @@ blev overtrådt før:
   de kører mod en in-memory store (`src/secrets/store.rs`). Den ægte keyring nås kun af
   `tests/keyring_smoke.rs` bag `--features keyring-smoke` og under et *andet* service-navn.
 
-Begge er beskrevet i [CONTRIBUTING.md](CONTRIBUTING.md) sammen med hele verifikationsritualet.
+Begge er beskrevet i [CONTRIBUTING.md](../.github/CONTRIBUTING.md) sammen med hele verifikationsritualet.

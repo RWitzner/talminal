@@ -25,16 +25,16 @@ ved siden af hinanden. Til Windows 11.
 </div>
 
 <!--
-DEMO-HERO — pladsholder.
-GIF'en optages i et saniteret miljø (ingen rigtige stier, nøgler eller projektnavne)
-inden v0.1.0. Indtil da er der ingen, frem for et billede der lyver om produktet.
+HERO: `assets/hero.png` — en genereret gengivelse af brugerfladen, ikke et
+skærmbillede. Proveniens, rettighedsgrundlag og hvad billedet indeholder står i
+ASSETS.md. En demo-GIF af den kørende app er stadig ønsket, men hører efter v0.1.
 -->
 
 > **English notice:** the voice pipeline currently understands **Danish only** — English
 > support is planned. Everything else works in English: the app is usable with mouse and
 > keyboard without any voice keys, and English issues and pull requests are very welcome.
 > The docs and the code comments are in Danish; see
-> [CONTRIBUTING.md](CONTRIBUTING.md).
+> [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ---
 
@@ -123,7 +123,7 @@ omkring dobbelt så langsom som standardruten — 1,3 s mod 0,77 s i median. Beg
 
 **Bemærk på standardruten:** `vercel` affyrer et andet skud efter 1200 ms, hvis det første
 ikke er svaret endnu. Det giver lejlighedsvis to fakturerbare requests pr. ytring. De
-øvrige ruter gør det ikke. Se [PRIVACY.md](PRIVACY.md).
+øvrige ruter gør det ikke. Se [PRIVACY.md](docs/PRIVACY.md).
 
 ## Sådan bruger du den
 
@@ -158,8 +158,8 @@ Kører du aldrig kommandoen, rører intet i dette repo din `settings.json`.
 - **Et kort er ikke en sandkasse.** Agenten får præcis samme adgang som en terminal åbnet
   i det workspace. Talminal sender heller ingen tilladelses-flag til agenterne, så de
   kører under **din egen** konfiguration — også hvis du har sat dem permissivt op.
-  [SECURITY.md](SECURITY.md) skriver det ud.
-- **Hvad der sendes hvorhen** står i [PRIVACY.md](PRIVACY.md). Kort: din stemme til
+  [SECURITY.md](.github/SECURITY.md) skriver det ud.
+- **Hvad der sendes hvorhen** står i [PRIVACY.md](docs/PRIVACY.md). Kort: din stemme til
   OpenAI, transskriptet til den rute du valgte, dine prompts til agentens egen udbyder.
   Ingen telemetri.
 - **Usigneret binær.** Kommer du til at hente en ZIP i stedet for at bruge npm, kan
@@ -176,7 +176,7 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
   oppe, er de væk næste gang.
 - **Tråde kan ikke slettes fra UI'et.** `threads\<id>.jsonl` er append-only og roterer ikke.
   Vil du rydde op, sletter du filerne manuelt mens appen er lukket.
-- **Ingen afinstallations-handling.** [PRIVACY.md](PRIVACY.md) lister hvad appen efterlader,
+- **Ingen afinstallations-handling.** [PRIVACY.md](docs/PRIVACY.md) lister hvad appen efterlader,
   men der er intet script og ingen knap der rydder det.
 - **Ingen status-liste over forudsætninger.** Mangler `claude.exe`, en nøgle eller en
   mikrofon, får du en fejl når du rammer den — ikke en oversigt der siger det på forhånd.
@@ -186,18 +186,18 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 - **Ingen auto-update.** Appen tjekker ikke om der er kommet en nyere version og siger
   ikke selv til. Du opdaterer manuelt med `npm i -g talminal@latest`. En updater er
   fravalgt til v0.1 og hører i v0.2.
-- **Sikkerhedsmangler** står for sig i [SECURITY.md](SECURITY.md) med konsekvensen af hver
+- **Sikkerhedsmangler** står for sig i [SECURITY.md](.github/SECURITY.md) med konsekvensen af hver
   enkelt — læs den, ikke kun denne liste.
 
 ## Dokumentation
 
 | | |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Ét kort over kodebasen — start her |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Ritualet, sprogreglen, PR-forventninger |
-| [SECURITY.md](SECURITY.md) | Trusselsmodellen og hvordan du rapporterer |
-| [PRIVACY.md](PRIVACY.md) | Dataflow, retention, hvad der bliver liggende |
-| [SUPPORT.md](SUPPORT.md) | Spørgsmål og de hyppigste årsager |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Ét kort over kodebasen — start her |
+| [CONTRIBUTING.md](.github/CONTRIBUTING.md) | Ritualet, sprogreglen, PR-forventninger |
+| [SECURITY.md](.github/SECURITY.md) | Trusselsmodellen og hvordan du rapporterer |
+| [PRIVACY.md](docs/PRIVACY.md) | Dataflow, retention, hvad der bliver liggende |
+| [SUPPORT.md](.github/SUPPORT.md) | Spørgsmål og de hyppigste årsager |
 | [ASSETS.md](ASSETS.md) | Medieaktiver og deres rettighedsgrundlag |
 
 ## Licens
