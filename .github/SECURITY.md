@@ -156,4 +156,5 @@ Finder du noget der ikke står her, så rapportér det ad kanalen ovenfor.
 
 ## Understøttede versioner
 
-Kun `main`. Der er endnu ingen udgivne versioner at bagudpatche.
+Kun **seneste udgivne version** (v0.1.0) og `main`. Der bagudpatches ikke til ældre
+versioner — projektet er en v0.1 fra ét menneske, og en rettelse kommer som en ny udgivelse.

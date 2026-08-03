@@ -52,8 +52,8 @@ Kør kommandoen **fra en projektmappe**. Talminal finder projektroden (nærmeste
 åbner et canvas for netop det repo. Kører du den et andet sted, får du et canvas for det
 sted.
 
-> **Endnu ikke udgivet.** npm-pakken publiceres først ved v0.1.0. Navnet er reserveret,
-> men kommandoerne ovenfor virker ikke endnu. Indtil da: byg fra kilde.
+Kræver **Windows 11 x64** — `os`/`cpu` i pakken gør en install på andre platforme til en
+ren fejl frem for en app der ikke virker.
 
 ### Opdatering
 
