@@ -67,7 +67,7 @@ Forventningen, målt 2026-08-03:
 |---|---|
 | `cargo test --locked` | 633 passed, 0 failed, 1 ignored |
 | `cargo test --locked --features supervision` | 654 passed, 0 failed, 1 ignored |
-| `npx vitest run` | 77 suiter, 816 tests |
+| `npx vitest run` | 78 suiter, 822 tests |
 | `npm run build` | `0/30 forbidden strings` |
 | `cargo fmt --check` og alle tre clippy | **nul output** |
 | `node scripts/repo-scan.mjs` | 0 uklassificerede hits |

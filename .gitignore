@@ -11,3 +11,8 @@ app-icon.png
 *.pfx
 *.key
 captures/
+
+# npm-pakkens binaerer. Bygges af scripts/release-build.mjs og lever KUN i
+# tarballen (files-allowlisten tager dem med trods gitignore). 19 MB hoerer
+# ikke hjemme i en offentlig historik.
+vendor/

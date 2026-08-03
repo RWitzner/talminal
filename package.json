@@ -1,6 +1,5 @@
 {
   "name": "talminal",
-  "private": true,
   "version": "0.1.0",
   "description": "Tal med dine terminaler. Stemmestyret canvas af agent-terminaler (Claude Code / Codex CLI) til Windows.",
   "license": "Apache-2.0",
@@ -13,6 +12,17 @@
     "url": "https://github.com/RWitzner/talminal/issues"
   },
   "homepage": "https://github.com/RWitzner/talminal#readme",
+  "bin": {
+    "talminal": "bin/talminal.mjs"
+  },
+  "files": [
+    "bin/",
+    "vendor/",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "ASSETS.md"
+  ],
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
