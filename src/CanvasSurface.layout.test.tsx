@@ -263,9 +263,9 @@ describe("CanvasSurface responsive tile-layout", () => {
     });
 
     const grid = host.querySelector<HTMLElement>("[data-terminal-grid]");
-    // Default-padding 18 + ORB_DOCK_CLEARANCE 88 — terminalerne må aldrig
-    // tegne ind i orbens bundbånd.
-    expect(grid!.style.paddingBottom).toBe("106px");
+    // Default-padding 18 + ORB_DOCK_CLEARANCE 73 (usage-HUD'ens overkant:
+    // bottom 24 + ~49px chip). Var 88 indtil 2026-08-03.
+    expect(grid!.style.paddingBottom).toBe("91px");
     // Default-padding 18 + TOP_ZONE_CLEARANCE 50 (= traekke-bjaelken alene).
     // Tallet var 84 indtil 2026-08-03: de 26 ekstra reserverede plads til en
     // HUD-chip der flyttede til bundbåndet dagen efter reservationen blev

@@ -56,10 +56,23 @@ export const TOPBAR_CLEARANCE = TOPBAR_TOP + TOPBAR_HEIGHT;
  *  gør plads til. Zonen her er ikke stedet at løse det. */
 export const TOP_ZONE_CLEARANCE = TOPBAR_CLEARANCE;
 
-/** Voice-orbens bundbånd (spec 2026-07-20 §6). Samme disciplin som
- *  TOPBAR_CLEARANCE: både grid-padding og layout-matematikken skal kende
- *  båndet, ellers vælges terminal-topologien mod en for stor flade. */
-export const ORB_DOCK_CLEARANCE = 88;
+/** Bundbåndet (spec 2026-07-20 §6). Samme disciplin som TOPBAR_CLEARANCE:
+ *  både grid-padding og layout-matematikken skal kende båndet, ellers vælges
+ *  terminal-topologien mod en for stor flade.
+ *
+ *  Tallet er båndets HØJESTE beboer, ikke et rundt tal. Målt 2026-08-03:
+ *
+ *    usage-HUD   `bottom: 24` + ~49px chip-højde  = 73   ← denne bestemmer
+ *    voice-orb   56px, `placeItems: center`        = 56  (centreret, 8,5 i top)
+ *
+ *  Var 88 indtil da, altså 15px slack over den højeste — plus grid-paddingens
+ *  18 gav det ~33px ned til HUD'en mod 18px til alle andre kanter. Nu er
+ *  afstanden symmetrisk hele vejen rundt.
+ *
+ *  Vokser HUD-chippen (en tredje række, større font), skal tallet med op.
+ *  Sker det ikke, rykker kortene bare tættere på — hverken orb eller HUD
+ *  klippes, for begge er `position: absolute` og ligger uden for gridden. */
+export const ORB_DOCK_CLEARANCE = 73;
 
 function gcd(left: number, right: number): number {
   let a = left;
