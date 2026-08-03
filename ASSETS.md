@@ -113,6 +113,23 @@ Baggrundene indgår i produktet under samme vilkår som resten af repoet.
 App-ikonerne er lavet til projektet og er dækket af [LICENSE](LICENSE) som resten af
 repoet.
 
+## README-hero — `assets/hero.png`
+
+1672×941 PNG. Sidder øverst i [README.md](README.md).
+
+- Motor: **gpt-image 2.0** (OpenAI Media Service API)
+- Genereret: 2026-08-03
+- C2PA: **bevaret i filen** (31 forekomster). Billedet er kopieret råt ind i repoet —
+  ingen beskæring, ingen resize, ingen re-encode. Derfor validerer manifesten stadig, og
+  proveniensen kan læses af filen selv frem for kun af denne optegnelse.
+- Rettighedsgrundlag: genereret til projektet, dækket af [LICENSE](LICENSE) som resten af
+  repoet.
+
+**Billedet er en genereret gengivelse af brugerfladen — ikke et skærmbillede.** Modellen
+har tegnet UI'et efter et rigtigt skærmbillede. Det ligner produktet, men hvert pixel er
+syntetisk, og detaljer kan afvige fra den kørende app. Står det uden forbehold øverst i
+READMEen, læses det som dokumentation af hvordan appen ser ud.
+
 ## Hvis du tilføjer et aktiv
 
 Skriv det ind her med kilde, tidspunkt og rettighedsgrundlag i samme pull request. Et

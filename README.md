@@ -1,5 +1,7 @@
 <div align="center"><a name="readme-top"></a>
 
+<img src="assets/hero.png" alt="Talminal — tal med dine terminaler" width="880">
+
 # Talminal
 
 **Tal med dine terminaler.**<br/>
