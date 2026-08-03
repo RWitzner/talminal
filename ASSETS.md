@@ -148,30 +148,56 @@ næste der kigger ved at det er vejet og ikke overset:
 
 Skiftes billedet ud, opdateres denne liste i samme pull request.
 
-## READMEens grafik — `assets/say-see.svg` og `assets/sections/*.svg`
+## Demo-optagelsen — `assets/demo.gif`
 
-Ti håndtegnede SVG'er lavet til projektet, dækket af [LICENSE](LICENSE) som resten af
+880×548 GIF, 72 frames ved 12 fps, seks sekunder, 1,7 MB.
+SHA-256 (16) `603d41c60864b9cc`. Sidder øverst i [README.md](README.md)s afsnit
+*"Sådan virker det"*.
+
+**Det her er en ægte optagelse af den kørende app** — modsat heroen. Ejerens egen
+skærmoptagelse fra 2026-07-22 (2084×1344, to minutter, med lyd), hvoraf udsnittet
+62,4–68,4 s er brugt. Lyden er kasseret; en GIF kan ikke bære den.
+
+Motivet: tomt canvas, to kort tegnes ind med cast-animationen, Claude Code booter i begge,
+prompten lander, og begge agenter går i gang.
+
+**Beskåret — og det var ikke valgfrit.** De øverste 68 px er skåret af. Titelbjælken stod
+med `personlighed  C:\Users\x\personlighed`, altså projektnavn og fuld hjemmemappe-sti.
+`repo-scan` er bygget til at fælde netop den streng, men **den kan ikke se ind i en GIF** —
+ingen gate ville have fanget det. Skiftes optagelsen ud, skal beskæringen efterprøves
+manuelt igen.
+
+**Delvist saniteret — ejer-godkendt 2026-08-03.** Resten kunne ikke beskæres væk uden at
+ødelægge optagelsen, og er derfor et bevidst valg. Optegnet her, så den næste der kigger
+ved at det er vejet:
+
+- Projektnavnet `personlighed` i kortfanerne og i Claude Codes arbejdsmappe.
+- `Persona OS` nævnt i prompten (*"Tilgå dmi.dk via Persona OS-browseren…"*) — et andet af
+  ejerens projekter.
+- Abonnementsniveau (`Claude Max`) og en advarsel om en MCP-server der mangler
+  autentificering. Begge dele står i forvejen i hero-billedet, med samme begrundelse.
+
+Rettighedsgrundlag: optaget af ejeren til projektet, dækket af [LICENSE](LICENSE).
+
+Skiftes optagelsen ud, opdateres denne liste i samme pull request.
+
+## READMEens ikoner — `assets/sections/*.svg`
+
+Ni håndtegnede SVG'er lavet til projektet, dækket af [LICENSE](LICENSE) som resten af
 repoet. Ingen generator, intet bibliotek, ingen tredjepartskilde.
 
-- `say-see.svg` — signaturstrimlen øverst i afsnittet *"Sådan virker det"*: tastetryk,
-  stemmebølge, den sagte sætning, og de tre nummererede kort den giver.
-- `sections/{how,install,req,keys,hud,warn,todo,docs,license}.svg` — ét ikon pr.
-  H2-overskrift, vist ved 26 px.
+`sections/{how,install,req,keys,hud,warn,todo,docs,license}.svg` — ét ikon pr.
+H2-overskrift, vist ved 26 px.
 
 **Farverne er ikke valgt frit.** Stregfarven er `#718297` (`Settings.tsx:1198`), og hver
 accent er appens egen med sin kodede betydning: `#7ab6e8` starter, `#4dd6b7` kører,
 `#e8b046` venter på dig, `#e06058` fejlet (`WorkspaceRail.tsx:358-369`,
-`UsageHud.tsx:68-71`). Fladerne i strimlen er `#0d0f12` og `#02060c` — canvas og
-kort-terminal, som i appen. En læser lærer altså appens statussprog af READMEen.
+`UsageHud.tsx:68-71`). En læser lærer altså appens statussprog af READMEen.
 
-**To bindinger der ikke må brydes ved redigering:**
-
-1. **Ingen `<defs>`, gradienter eller `<pattern>`.** Filerne er flade fyld og streger med
-   vilje. GitHubs SVG-sanitizer kan fjerne definitioner, og et `fill="url(#…)"` der ikke
-   kan opløses, bliver til en sort flade i stedet for at fejle synligt.
-2. **`textLength` på tekst i `say-see.svg` skal blive stående.** Strimlen sætter tekst i
-   systemets monospace, som varierer mellem maskiner; `textLength` fastlåser bredden, så
-   ingen fremmed font kan skubbe layoutet ud af balance.
+**Én binding der ikke må brydes ved redigering: ingen `<defs>`, gradienter eller
+`<pattern>`.** Filerne er flade fyld og streger med vilje. GitHubs SVG-sanitizer kan
+fjerne definitioner, og et `fill="url(#…)"` der ikke kan opløses, bliver til en sort flade
+i stedet for at fejle synligt.
 
 Ikonerne er tegnet til at overleve 26 px og til at bære på både lyst og mørkt tema, så der
 findes **med vilje ingen dark-varianter** — det er derfor stregen er `#718297` og ikke den

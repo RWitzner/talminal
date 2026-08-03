@@ -26,7 +26,9 @@ Kun til <img src="assets/windows11.svg" alt="Windows 11" width="98" height="18">
 <!--
 HERO: `assets/hero.png` — en genereret gengivelse af brugerfladen, ikke et
 skærmbillede. Proveniens, rettighedsgrundlag og hvad billedet indeholder står i
-ASSETS.md. En demo-GIF af den kørende app er stadig ønsket, men hører efter v0.1.
+ASSETS.md. Demo-GIF'en er der nu: `assets/demo.gif` under "Saadan virker det".
+Den er en AEGTE optagelse — det er dén der viser hvordan appen faktisk opfoerer
+sig, mens heroen kun viser hvordan den ser ud.
 -->
 
 ---
@@ -36,9 +38,9 @@ ASSETS.md. En demo-GIF af den kørende app er stadig ønsket, men hører efter v
 Canvas'et er et gitter af **nummererede kort**. Hvert kort er en rigtig agent-terminal —
 Claude Code eller Codex CLI — og **nummeret er det du taler til.**
 
-<img src="assets/say-see.svg" alt="Du holder Ctrl+Shift+Space nede og siger 'Åbn tre terminaler'. Tre nummererede kort starter op på canvas." width="880">
+<img src="assets/demo.gif" alt="Tomt canvas. To kort tegnes ind, Claude Code booter i begge, og en prompt lander — hvorefter begge agenter går i gang." width="880">
 
-<sub>Prikken på hvert kort er dets tilstand. Farverne er appens egne, og de betyder det samme her som inde i produktet: blå starter · teal kører · rav venter på dig · rød fejlet.</sub>
+<sub>Seks sekunder fra den kørende app, uden lyd: tomt canvas, to kort åbnes, Claude Code booter i begge, prompten lander.</sub>
 
 Hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan ændres under
 Indstillinger → Stemme. Stemmen er en genvej, ikke en betingelse: et kort kan også oprettes
