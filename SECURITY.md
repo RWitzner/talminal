@@ -136,10 +136,13 @@ mangler.
 
 ### Frontend og binærer
 
-- **CSP er ikke strammet for den bundlede frontend.** `tauri.conf.json` har `csp: null`, så
-  der sendes ingen politik. Der er ingen kendt vej ind i hoved-webview'et — agent-output
-  skrives som tekstnoder, ikke HTML, og browser-kort er separate webviews — så dette er
-  manglende dybdeforsvar, ikke en åben sårbarhed.
+- **CSP'en kan ikke undvære `style-src 'unsafe-inline'`.** Politikken er sat for den
+  bundlede frontend, men xterm 6 injicerer selv runtime-`<style>`-elementer og kalder
+  `setAttribute("style", …)` — det ligger i biblioteket, ikke i vores egen CSS, så
+  direktivet kan ikke strammes uden at gøre terminalen ulæselig. En injektion i
+  hoved-webview'et ville derfor kunne style-bombe fladen. Der er ingen kendt vej ind
+  (agent-output skrives som tekstnoder, ikke HTML, og browser-kort er separate webviews),
+  så dette er en grænse for dybdeforsvaret, ikke en åben sårbarhed.
 - **Release-binærerne indeholder byggemaskinens brugernavn.** `scripts/release-build.mjs`
   fjerner ~94 % (talminal-canvas.exe: 930 → 84 forekomster), men to kilder kan et
   rustc-flag ikke nå: strenge en crate selv har bygget af `env!("CARGO_MANIFEST_DIR")`
