@@ -17,7 +17,7 @@ bare ikke sprog inden i én fil.
 
 Du skal vide hvad du går ind til: kan du ikke læse dansk, vil du bruge en oversætter på
 kommentarerne. Det er den ærlige pris ved at åbne det her repo som det er, i stedet for
-at oversætte 97 filer og tabe nuancerne.
+at oversætte godt 100 filer og tabe nuancerne.
 
 ## Forudsætninger
 
@@ -54,6 +54,7 @@ cargo clippy --locked -- -D warnings
 cargo clippy --locked --all-targets --features keyring-smoke,live-data-probe -- -D warnings
 cd ..
 
+npm ci          # kun nødvendig efter en frisk klon eller et skift i package-lock.json
 npm run build
 npx vitest run
 node scripts/repo-scan.mjs
@@ -65,7 +66,7 @@ Forventningen, målt 2026-08-03:
 | Trin | Forventet |
 |---|---|
 | `cargo test --locked` | 624 passed, 0 failed, 1 ignored |
-| `cargo test --locked --features supervision` | 645 passed, 0 failed |
+| `cargo test --locked --features supervision` | 645 passed, 0 failed, 1 ignored |
 | `npx vitest run` | 77 suiter, 816 tests |
 | `npm run build` | `0/30 forbidden strings` |
 | `cargo fmt --check` og alle tre clippy | **nul output** |
