@@ -14,18 +14,15 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use talminal_canvas_lib::profiles::{self, NESTED_SCRUB};
 use talminal_canvas_lib::pty::{PtyHost, PtySpawn};
 
-// ---------- hjaelpere (spike-moensteret; dubleret fra pty_host.rs — test-
-// binaries kan ikke dele kode uden tests/common/, som er uden for lease) ----------
+mod common;
+use common::{cmd_exe, stripped, wait_exit, wait_for};
 
-fn cmd_exe() -> String {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    format!(r"{root}\System32\cmd.exe")
-}
+// ---------- hjaelpere ----------
 
 /// Spawner `cmd /c set` med de givne deny-lister og opsamler output.
 fn spawn_env_dump(
@@ -49,98 +46,6 @@ fn spawn_env_dump(
     )
     .expect("spawn");
     (host, buf)
-}
-
-fn stripped(buf: &Arc<Mutex<Vec<u8>>>) -> String {
-    strip_ansi(&buf.lock().unwrap())
-}
-
-fn wait_for(buf: &Arc<Mutex<Vec<u8>>>, needle: &str, timeout: Duration) -> bool {
-    let start = Instant::now();
-    loop {
-        if stripped(buf).contains(needle) {
-            return true;
-        }
-        if start.elapsed() >= timeout {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-fn wait_exit(host: &PtyHost, timeout: Duration) -> bool {
-    let start = Instant::now();
-    loop {
-        if host.try_exit_status().is_some() {
-            return true;
-        }
-        if start.elapsed() >= timeout {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-/// ANSI-stripper fra spike-harnessen (kanonisk moenster).
-fn strip_ansi(bytes: &[u8]) -> String {
-    #[derive(PartialEq)]
-    enum St {
-        Normal,
-        Esc,
-        Csi,
-        Osc,
-        OscEsc,
-        Str,
-        StrEsc,
-        EscInter,
-    }
-    let mut st = St::Normal;
-    let mut out = Vec::with_capacity(bytes.len());
-    for &b in bytes {
-        match st {
-            St::Normal => {
-                if b == 0x1B {
-                    st = St::Esc;
-                } else if b == b'\r' || b == b'\n' || b == b'\t' || b >= 0x20 {
-                    out.push(b);
-                }
-            }
-            St::Esc => {
-                st = match b {
-                    b'[' => St::Csi,
-                    b']' => St::Osc,
-                    b'P' | b'X' | b'^' | b'_' => St::Str,
-                    b'(' | b')' | b'*' | b'+' => St::EscInter,
-                    _ => St::Normal,
-                };
-            }
-            St::Csi => {
-                if (0x40..=0x7E).contains(&b) {
-                    st = St::Normal;
-                }
-            }
-            St::Osc => {
-                if b == 0x07 {
-                    st = St::Normal;
-                } else if b == 0x1B {
-                    st = St::OscEsc;
-                }
-            }
-            St::OscEsc => {
-                st = if b == b'\\' { St::Normal } else { St::Osc };
-            }
-            St::Str => {
-                if b == 0x1B {
-                    st = St::StrEsc;
-                }
-            }
-            St::StrEsc => {
-                st = if b == b'\\' { St::Normal } else { St::Str };
-            }
-            St::EscInter => st = St::Normal,
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 // ---------- (a) profil-kontrakten ----------
@@ -212,7 +117,7 @@ fn nested_scrub_applies_with_empty_deny_lists() {
         "child env dump not seen; stripped output: {}",
         stripped(&buf)
     );
-    assert!(wait_exit(&host, Duration::from_secs(10)));
+    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
     // giv reader-traaden et oejeblik til at draene resten foer fravaers-asserts
     std::thread::sleep(Duration::from_millis(300));
     let text = stripped(&buf);
@@ -254,7 +159,7 @@ fn cc_profile_deny_lists_scrub_credentials_in_both_layers() {
         "child env dump not seen; stripped output: {}",
         stripped(&buf)
     );
-    assert!(wait_exit(&host, Duration::from_secs(10)));
+    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
     std::thread::sleep(Duration::from_millis(300));
     let text = stripped(&buf);
     for k in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "VERCEL_TOKEN"] {

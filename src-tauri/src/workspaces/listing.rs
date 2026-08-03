@@ -155,19 +155,25 @@ pub fn unique_suffixes(roots: &[String]) -> Vec<String> {
                 .collect()
         })
         .collect();
+    // Sammenligningen sker paa KOMPONENTER, ikke paa sammensatte strenge.
+    // Den tidligere form `join("\\")`ede baade kandidaten og hver anden posts
+    // suffiks paa hvert dybde-trin — én ny `String` pr. (post, dybde, anden).
+    // Badge-ticken (1 Hz) kalder `summaries()` ubetinget, saa den allokation
+    // loeb hvert sekund for et resultat der kun aendrer sig naar et projekt
+    // tilfoejes eller fjernes.
     parts
         .iter()
         .enumerate()
         .map(|(index, mine)| {
             for depth in 1..=mine.len() {
-                let candidate = mine[mine.len() - depth..].join("\\");
+                let candidate = &mine[mine.len() - depth..];
                 let unique = parts.iter().enumerate().all(|(other_index, other)| {
                     other_index == index
                         || other.len() < depth
-                        || other[other.len() - depth..].join("\\") != candidate
+                        || other[other.len() - depth..] != *candidate
                 });
                 if unique {
-                    return candidate;
+                    return candidate.join("\\");
                 }
             }
             mine.join("\\")

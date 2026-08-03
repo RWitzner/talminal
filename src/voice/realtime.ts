@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { base64ToBuffer, bytesToBase64 } from "../base64";
+import { asError } from "./errors";
 import type { VoiceIntent } from "./intents";
 import type {
   JsonObject,
@@ -291,28 +293,6 @@ export function realtimeToolCallToIntent(call: RealtimeToolCall): VoiceIntent | 
     default:
       return null;
   }
-}
-
-function bytesToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
-  }
-  return btoa(binary);
-}
-
-function base64ToBuffer(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
-}
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
 
 interface PendingTurn {

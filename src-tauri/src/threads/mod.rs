@@ -701,6 +701,23 @@ pub fn message_counts() -> Vec<(String, u64)> {
         .collect()
 }
 
+/// `(inbox-laengde, staar kortet i wake-saettet?)` under ÉN laasning.
+///
+/// Findes fordi heartbeaten (250 ms) ellers svarede paa "venter kortet?" ved at
+/// kalde `get()` — som `clone()`er HELE traaden, inkl. hver beskeds body (op
+/// til 16 KiB × 20 hop). Mens en assignee arbejder, gentages den kopi fire
+/// gange i sekundet for at laese én bool.
+pub fn inbox_state(thread: &str, card: &str) -> (usize, bool) {
+    let map = lock_threads();
+    let Some(t) = map.get(thread) else {
+        return (0, false);
+    };
+    (
+        t.inbox.get(card).map(|v| v.len()).unwrap_or(0),
+        t.wake.contains(card),
+    )
+}
+
 pub fn wake_len(thread: &str) -> usize {
     lock_threads()
         .get(thread)

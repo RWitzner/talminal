@@ -102,9 +102,7 @@ pub fn write_project_meta(state_dir: &Path, meta: &ProjectMeta) -> io::Result<()
         name: meta.name.clone(),
         added_at: meta.added_at.clone(),
     };
-    let mut body = serde_json::to_string_pretty(&to_write).map_err(io::Error::other)?;
-    body.push('\n');
-    crate::atomic::write(&state_dir.join("project.json"), body.as_bytes())
+    crate::atomic::write_json_pretty(&state_dir.join("project.json"), &to_write)
 }
 
 /// Hint only: corrupt/empty → `None`.

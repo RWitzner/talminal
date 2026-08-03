@@ -16,6 +16,10 @@ import type {
 } from "./types";
 import { HotkeyRecorder } from "./HotkeyRecorder";
 import {
+  DEFAULT_EXIT_TYPE_MODE_HOTKEY,
+  DEFAULT_PTT_HOTKEY,
+} from "./hotkeyDefaults";
+import {
   DEFAULT_SETTINGS_CATEGORY,
   type SettingsCategory,
 } from "./settingsCategories";
@@ -37,11 +41,6 @@ export const PROVIDER_KEY_VERCEL = "provider_key_vercel";
 export const PROVIDER_KEY_GOOGLE = "provider_key_google";
 export const PROVIDER_KEY_OPENROUTER = "provider_key_openrouter";
 
-// Defaults spejler workspace.rs (DEFAULT_PTT_HOTKEY /
-// DEFAULT_EXIT_TYPE_MODE_HOTKEY) — bruges kun som fallback hvis
-// get_workspace fejler (fx workspace endnu ikke loaded).
-const DEFAULT_PTT_HOTKEY = "CmdOrCtrl+Shift+Space";
-const DEFAULT_EXIT_TYPE_MODE_HOTKEY = "Shift+Escape";
 
 async function saveSettingsPatch(
   patch: Partial<WorkspaceSettings>,
@@ -1198,6 +1197,5 @@ const styles: Record<string, CSSProperties> = {
   },
   hint: { fontSize: 11, color: "#718297", lineHeight: 1.5 },
   ok: { fontSize: 11, color: "#4dd6b7" },
-  warning: { fontSize: 11, color: "#e8b046" },
   error: { fontSize: 11, color: "#ff9b93" },
 };

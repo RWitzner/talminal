@@ -185,27 +185,8 @@ async fn response_bytes_with_cap(
     cap_label: &str,
     api_key: &str,
 ) -> Result<Vec<u8>, String> {
-    let status = response.status();
-    if !status.is_success() {
-        // Four bytes per Unicode scalar are sufficient to recover the first
-        // 500 characters without buffering an unbounded upstream error body.
-        const ERROR_EXCERPT_MAX_BYTES: usize = 2_000;
-        let mut bytes = Vec::with_capacity(ERROR_EXCERPT_MAX_BYTES);
-        while bytes.len() < ERROR_EXCERPT_MAX_BYTES {
-            let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|error| format!("{operation} response read failed: {error}"))?
-            else {
-                break;
-            };
-            let remaining = ERROR_EXCERPT_MAX_BYTES - bytes.len();
-            bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
-        }
-        return Err(format!(
-            "{operation} failed with HTTP {status}: {}",
-            error_excerpt(&bytes, api_key)
-        ));
+    if !response.status().is_success() {
+        return Err(error_status_message(&mut response, operation, api_key).await);
     }
 
     let mut bytes = Vec::new();
@@ -220,6 +201,38 @@ async fn response_bytes_with_cap(
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+/// Bygger fejlbeskeden for et ikke-2xx-svar. Draener HOEJST 2 KB af kroppen —
+/// fire bytes pr. Unicode-scalar raekker til de foerste 500 tegn, og en
+/// upstream-fejl maa aldrig kunne buffe ubegraenset — og koerer den gennem
+/// `error_excerpt`, som redigerer API-noeglen ud.
+///
+/// Ét sted: den streamende TTS-vej havde sin egen kopi med sin EGEN
+/// `ERROR_EXCERPT_MAX_BYTES`-konstant. To kopier af en redigerings-sti er to
+/// steder en noegle kan slippe ud.
+async fn error_status_message(
+    response: &mut reqwest::Response,
+    operation: &str,
+    api_key: &str,
+) -> String {
+    const ERROR_EXCERPT_MAX_BYTES: usize = 2_000;
+    let status = response.status();
+    let mut bytes = Vec::with_capacity(ERROR_EXCERPT_MAX_BYTES);
+    while bytes.len() < ERROR_EXCERPT_MAX_BYTES {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                let remaining = ERROR_EXCERPT_MAX_BYTES - bytes.len();
+                bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
+            }
+            Ok(None) => break,
+            Err(error) => return format!("{operation} response read failed: {error}"),
+        }
+    }
+    format!(
+        "{operation} failed with HTTP {status}: {}",
+        error_excerpt(&bytes, api_key)
+    )
 }
 
 fn parse_json_object(body: &str, operation: &str) -> Result<Map<String, Value>, String> {
@@ -563,12 +576,14 @@ pub async fn router_chat_completion(body: String) -> Result<String, String> {
     router_chat_completion_with(&resolved, endpoint, body).await
 }
 
-pub async fn tts_speech_with(
-    api_key: &str,
-    endpoint: &str,
-    body: String,
-) -> Result<String, String> {
-    let object = parse_json_object(&body, "TTS speech")?;
+/// Krops- og noeglevalidering for TTS. Returnerer den trimmede noegle, saa
+/// kalderne ikke trimmer hver for sig.
+///
+/// Ét sted, fordi de to TTS-veje (bufret og streamende) ellers har hver sin
+/// kopi af den samme allowlist — og en lempet regel i den ene aabner en doer
+/// den anden tror er lukket.
+fn validate_tts_request<'a>(body: &str, api_key: &'a str) -> Result<&'a str, String> {
+    let object = parse_json_object(body, "TTS speech")?;
     let model = required_string(&object, "model", "TTS speech")?;
     if model != TTS_MODEL {
         return Err(format!("TTS speech body.model must be {TTS_MODEL}"));
@@ -592,6 +607,15 @@ pub async fn tts_speech_with(
     if api_key.is_empty() {
         return Err("OpenAI API key is not configured".to_string());
     }
+    Ok(api_key)
+}
+
+pub async fn tts_speech_with(
+    api_key: &str,
+    endpoint: &str,
+    body: String,
+) -> Result<String, String> {
+    let api_key = validate_tts_request(&body, api_key)?;
     let response = http_client()
         .post(endpoint)
         .bearer_auth(api_key)
@@ -626,30 +650,7 @@ pub async fn tts_speech_stream_with<F: FnMut(String)>(
     body: String,
     mut on_chunk: F,
 ) -> Result<(), String> {
-    let object = parse_json_object(&body, "TTS speech")?;
-    let model = required_string(&object, "model", "TTS speech")?;
-    if model != TTS_MODEL {
-        return Err(format!("TTS speech body.model must be {TTS_MODEL}"));
-    }
-    let voice = required_string(&object, "voice", "TTS speech")?;
-    if !TTS_VOICES.contains(&voice) {
-        return Err(format!(
-            "TTS speech body.voice must be one of {}",
-            TTS_VOICES.join(", ")
-        ));
-    }
-    let response_format = required_string(&object, "response_format", "TTS speech")?;
-    if response_format != "pcm" {
-        return Err("TTS speech body.response_format must be pcm".to_string());
-    }
-    let input = required_string(&object, "input", "TTS speech")?;
-    if input.chars().count() > TTS_INPUT_MAX_CHARS {
-        return Err("TTS speech body.input exceeds 600 characters".to_string());
-    }
-    let api_key = api_key.trim();
-    if api_key.is_empty() {
-        return Err("OpenAI API key is not configured".to_string());
-    }
+    let api_key = validate_tts_request(&body, api_key)?;
     let mut response = http_client()
         .post(endpoint)
         .bearer_auth(api_key)
@@ -658,25 +659,8 @@ pub async fn tts_speech_stream_with<F: FnMut(String)>(
         .send()
         .await
         .map_err(|error| format!("TTS speech request failed: {error}"))?;
-    let status = response.status();
-    if !status.is_success() {
-        const ERROR_EXCERPT_MAX_BYTES: usize = 2_000;
-        let mut bytes = Vec::with_capacity(ERROR_EXCERPT_MAX_BYTES);
-        while bytes.len() < ERROR_EXCERPT_MAX_BYTES {
-            let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|error| format!("TTS speech response read failed: {error}"))?
-            else {
-                break;
-            };
-            let remaining = ERROR_EXCERPT_MAX_BYTES - bytes.len();
-            bytes.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
-        }
-        return Err(format!(
-            "TTS speech failed with HTTP {status}: {}",
-            error_excerpt(&bytes, api_key)
-        ));
+    if !response.status().is_success() {
+        return Err(error_status_message(&mut response, "TTS speech", api_key).await);
     }
 
     // PCM er 16-bit little-endian; HTTP-chunkgraenser er vilkaarlige, saa en

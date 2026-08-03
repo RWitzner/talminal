@@ -28,6 +28,8 @@
 // Exit observeres via try_exit_status — ALDRIG via reader-EOF (FUND 11).
 
 mod common;
+use common::cmd_exe;
+use common::is_worker;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -38,11 +40,6 @@ use talminal_canvas_lib::pty::{PtyHost, PtySpawn};
 use talminal_canvas_lib::registry;
 
 // ---------- hjaelpere ----------
-
-fn cmd_exe() -> String {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    format!(r"{root}\System32\cmd.exe")
-}
 
 fn create_default(dir: &Path) -> registry::CardInfo {
     registry::create_card(dir.display().to_string(), "claude".to_string(), None)
@@ -67,10 +64,6 @@ fn run_worker(worker: &str) {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-}
-
-fn is_worker(name: &str) -> bool {
-    std::env::var("TALMINAL_WORKER").as_deref() == Ok(name)
 }
 
 /// Profilens kommandoer som Vec<String> — testene sammenligner mod PROFILEN

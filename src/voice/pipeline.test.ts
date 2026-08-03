@@ -6,20 +6,9 @@ import { createPipelineVoiceSession, type PipelineUiState } from "./pipeline";
 import type { Reply } from "./replies";
 import type { SttClient } from "./stt";
 import type { TtsPlayback } from "./tts";
+import { deferred, flushTimers } from "../testHelpers";
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
-async function flush() {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
 
 function fakeStt(final: Promise<string> | string = "Genstart kort tre"): SttClient {
   return {
@@ -129,10 +118,10 @@ function makeHarness(options: {
 
 async function runTurn(h: ReturnType<typeof makeHarness>) {
   h.session.press();
-  await flush();
+  await flushTimers();
   h.session.release();
-  await flush();
-  await flush();
+  await flushTimers();
+  await flushTimers();
 }
 
 // Kæde-test-hjælpere (Task 3): spejler filens stub-mønster — route stubbes
@@ -209,7 +198,7 @@ describe("createPipelineVoiceSession", () => {
       onTurnStart,
     });
     session.press();
-    await flush();
+    await flushTimers();
     expect(onTurnStart).toHaveBeenCalledTimes(1);
   });
 
@@ -222,7 +211,7 @@ describe("createPipelineVoiceSession", () => {
       onTurnStart,
     });
     session.press();
-    await flush();
+    await flushTimers();
     expect(onTurnStart).not.toHaveBeenCalled();
   });
 
@@ -236,11 +225,11 @@ describe("createPipelineVoiceSession", () => {
       onTurnStart,
     });
     session.press();
-    await flush();
+    await flushTimers();
     session.cancel();
     hasPartials = false;
     session.press();
-    await flush();
+    await flushTimers();
     expect(onTurnStart).toHaveBeenCalledTimes(1);
   });
 
@@ -460,9 +449,9 @@ describe("createPipelineVoiceSession", () => {
       speak: () => playback,
     });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     expect(h.session.state()).toBe("speaking");
 
     h.session.press();
@@ -478,14 +467,14 @@ describe("createPipelineVoiceSession", () => {
       route: () => routed.promise,
     });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     expect(h.session.state()).toBe("processing");
 
     h.session.press();
     routed.resolve([restartIntent]);
-    await flush();
+    await flushTimers();
     expect(h.session.state()).toBe("listening");
     expect(h.dispatch).not.toHaveBeenCalled();
   });
@@ -494,7 +483,7 @@ describe("createPipelineVoiceSession", () => {
     const h = makeHarness();
     h.session.press();
     h.session.press();
-    await flush();
+    await flushTimers();
 
     expect(h.stts[0].start).toHaveBeenCalledTimes(1);
     expect(h.startCapture).toHaveBeenCalledTimes(1);
@@ -505,7 +494,7 @@ describe("createPipelineVoiceSession", () => {
     const h = makeHarness();
     h.session.press();
     h.session.press();
-    await flush();
+    await flushTimers();
 
     // Kun det tur-startende tryk varmer; listening-no-op'et gør ikke.
     expect(h.warm).toHaveBeenCalledTimes(1);
@@ -515,10 +504,10 @@ describe("createPipelineVoiceSession", () => {
     const h = makeHarness();
     h.session.release();
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
     h.session.release();
-    await flush();
+    await flushTimers();
 
     expect(h.stts[0].stop).toHaveBeenCalledTimes(1);
     expect(h.states.filter((state) => state === "finalizing")).toHaveLength(1);
@@ -543,7 +532,7 @@ describe("createPipelineVoiceSession", () => {
     ]);
 
     h.session.release();
-    await flush();
+    await flushTimers();
     expect(h.transcripts.at(-1)).toBe("Genstart kort tre");
   });
 
@@ -568,11 +557,11 @@ describe("createPipelineVoiceSession", () => {
     const final = deferred<string>();
     const h = makeHarness({ stts: [fakeStt(final.promise)] });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
     h.session.cancel();
     final.resolve("Genstart kort tre");
-    await flush();
+    await flushTimers();
 
     expect(h.transcripts).toEqual([]);
     expect(h.route).not.toHaveBeenCalled();
@@ -586,12 +575,12 @@ describe("createPipelineVoiceSession", () => {
       route: () => routed.promise,
     });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     h.session.press();
     routed.resolve([restartIntent]);
-    await flush();
+    await flushTimers();
 
     expect(h.dispatch).not.toHaveBeenCalled();
     expect(h.session.state()).toBe("listening");
@@ -601,12 +590,12 @@ describe("createPipelineVoiceSession", () => {
     const dispatched = deferred<DispatchResult>();
     const h = makeHarness({ dispatch: () => dispatched.promise });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     await h.session.stop();
     dispatched.resolve(dispatchResult);
-    await flush();
+    await flushTimers();
 
     expect(h.results).toEqual([]);
     expect(h.responses).toEqual([]);
@@ -626,12 +615,12 @@ describe("createPipelineVoiceSession", () => {
       speak: () => playback,
     });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     h.session.press();
     done.resolve();
-    await flush();
+    await flushTimers();
 
     expect(h.captures).toEqual([]);
     expect(h.session.state()).toBe("listening");
@@ -658,12 +647,12 @@ describe("createPipelineVoiceSession", () => {
         speak: () => playback,
       });
       h.session.press();
-      await flush();
+      await flushTimers();
       if (phase !== "listening") {
         h.session.release();
-        await flush();
+        await flushTimers();
       }
-      if (phase === "speaking") await flush();
+      if (phase === "speaking") await flushTimers();
 
       await h.session.stop();
       expect(h.session.state(), phase).toBe("idle");
@@ -680,8 +669,8 @@ describe("createPipelineVoiceSession", () => {
     });
     const h = makeHarness({ stts: [stt] });
     h.session.press();
-    await flush();
-    await flush();
+    await flushTimers();
+    await flushTimers();
 
     expect(h.responses).toEqual(["Noget gik galt — se skærmen"]);
     expect(h.errors.map((error) => error.message)).toContain("ingen nøgle");
@@ -719,13 +708,13 @@ describe("createPipelineVoiceSession", () => {
     });
 
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     now = 2_460;
     firstAudio.reject(new Error("tts fejlede før lyd"));
     done.reject(new Error("tts fejlede før lyd"));
-    await flush();
+    await flushTimers();
 
     expect(h.latencies).toEqual([]);
     expect(h.captures).toHaveLength(1);
@@ -763,13 +752,13 @@ describe("createPipelineVoiceSession", () => {
       }),
     });
     h.session.press();
-    await flush();
+    await flushTimers();
     h.session.release();
-    await flush();
+    await flushTimers();
     now = 1_275;
     firstAudio.resolve();
     done.resolve();
-    await flush();
+    await flushTimers();
 
     expect(h.latencies).toEqual([275]);
     expect(h.captures).toHaveLength(1);

@@ -31,6 +31,20 @@ pub fn write(path: &Path, contents: &[u8]) -> io::Result<()> {
     write_with(path, contents, next_nonce)
 }
 
+/// Serialiserer `value` som pretty JSON med AFSLUTTENDE NEWLINE og skriver det
+/// atomisk.
+///
+/// Newlinen er ikke kosmetik: `tests/workspace.rs`' byte-stabile roundtrip
+/// asserter den. Ni persistere gentog derfor de samme tre linjer
+/// (`to_string_pretty` → `push('\n')` → `write`), og konventionen levede kun i
+/// hukommelsen hos den der skrev den tiende. Nu er den en egenskab ved
+/// funktionen.
+pub fn write_json_pretty<T: serde::Serialize>(path: &Path, value: &T) -> io::Result<()> {
+    let mut body = serde_json::to_string_pretty(value).map_err(io::Error::other)?;
+    body.push('\n');
+    write(path, body.as_bytes())
+}
+
 /// Kernen bag [`write`]. `nonce` er en seam: produktionen leverer den proces-globale
 /// tæller, testen kan levere en deterministisk sekvens og dermed øve retry-løkken.
 /// Seamen er privat — modulets offentlige flade er stadig kun `write`.

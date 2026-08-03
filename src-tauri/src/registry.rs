@@ -893,6 +893,31 @@ pub fn list_cards() -> Vec<CardInfo> {
     infos
 }
 
+/// `(antal kort, antal koerende terminal-kort)` — samme laase-disciplin som
+/// [`list_cards`], men uden at bygge projektionen.
+///
+/// Status-writeren kaldte `list_cards()` blot for at taelle. Hver `CardInfo`
+/// klonede otte `String`-felter (navn, cwd, profil, url, titel, thread_id,
+/// purpose, restore_action) der straks blev smidt vaek — og det sker ved hver
+/// create/close/spawn/exit.
+pub fn card_counts() -> (u32, u32) {
+    let handles = all_handles();
+    let mut total = 0;
+    let mut running = 0;
+    for handle in handles.iter() {
+        let Ok(card) = handle.lock() else { continue };
+        total += 1;
+        // Samme praedikat som `card_info`s `kind == "terminal" && running`:
+        // for et terminal-kort ER `running` praecis `pty.is_some()`.
+        if let CardBackend::Terminal(terminal) = &card.backend {
+            if terminal.pty.is_some() {
+                running += 1;
+            }
+        }
+    }
+    (total, running)
+}
+
 /// Slaar et korts runtime-handle op ved navn — map-laasen SLIPPES igen foer
 /// retur (fix F2); kalderen laaser derefter selv kortet. Fejlteksten
 /// ("unknown card") er de eksisterende kommandoers uaendrede fejlflade.

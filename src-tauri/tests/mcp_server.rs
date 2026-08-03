@@ -1,10 +1,10 @@
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::sync::Arc;
 
 use serde_json::Value;
 use talminal_canvas_lib::mcp::{self, BrowserCardOps, BrowserCardRow, McpOps, OpenResult};
 use talminal_canvas_lib::threads::ops::LiveThreadOps;
+
+mod common;
 
 /// Kortet denne fils klient optraeder som. Efter identitets-gaten (review
 /// 2026-07-29) findes der ingen anonym vej ind: HVER request — ogsaa
@@ -42,27 +42,7 @@ impl BrowserCardOps for FakeOps {
 }
 
 fn post(port: u16, body: &str, bearer: Option<&str>) -> String {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    let auth_header = bearer
-        .map(|t| format!("Authorization: Bearer {t}\r\n"))
-        .unwrap_or_default();
-    let req = format!(
-        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n{auth_header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    stream.write_all(req.as_bytes()).expect("write");
-    let mut out = String::new();
-    stream.read_to_string(&mut out).expect("read");
-    out
-}
-
-/// Splits a raw HTTP response at the header/body boundary and parses the
-/// body as JSON.
-fn body_json(raw: &str) -> Value {
-    let (_headers, body) = raw
-        .split_once("\r\n\r\n")
-        .expect("http response has a header/body separator");
-    serde_json::from_str(body).expect("body is valid json")
+    common::mcp_post_raw(port, body, None, bearer)
 }
 
 #[test]
@@ -100,7 +80,7 @@ fn initialize_tools_list_and_call_roundtrip() {
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_card_open","arguments":{"url":"https://example.com"}}}"#,
         Some(TOKEN),
     );
-    let call_body = body_json(&call);
+    let call_body = common::body_json(&call);
     let content = &call_body["result"]["content"][0];
     assert_eq!(content["type"], "text", "{call_body}");
     let text = content["text"]
@@ -145,7 +125,7 @@ fn the_same_roundtrip_without_a_token_is_rejected_at_every_step() {
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"browser_card_open","arguments":{"url":"https://example.com"}}}"#,
     ] {
-        let out = body_json(&post(port, body, None));
+        let out = common::body_json(&post(port, body, None));
         assert_eq!(out["error"]["code"], -32600, "{out}");
         assert!(out.get("result").is_none(), "{out}");
     }

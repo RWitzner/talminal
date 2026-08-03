@@ -1173,21 +1173,73 @@ async fn close_card(app: AppHandle, name: String) -> Result<(), String> {
     close_card_impl(app, name, None, None).await
 }
 
+/// Enkelt-close er batch-close med ét target plus et opslag i fejllisten —
+/// samme reduktion som `registry::close_card` allerede laver over
+/// `close_cards` et lag laengere nede. De to kommandoer havde tidligere hver
+/// sin kopi af hele kaskaden (expand → lifecycle → token-clear → count-refresh);
+/// enhver aendring i close-stien skulle skrives to steder, og token-loekken var
+/// skrevet to gange.
 #[inline(always)]
-#[cfg_attr(not(feature = "perf-trace"), allow(unused_variables))]
 async fn close_card_impl(
     app: AppHandle,
     name: String,
     perf_trace: Option<String>,
     perf_started_ms: Option<f64>,
 ) -> Result<(), String> {
+    let result = close_cards_impl(
+        app,
+        vec![name.clone()],
+        "single",
+        perf_trace,
+        perf_started_ms,
+    )
+    .await?;
+    match result.errors.iter().find(|error| error.name == name) {
+        Some(error) => Err(error.message.clone()),
+        None => Ok(()),
+    }
+}
+
+/// Batch-close til voice/UI: én lifecycle-transaktion, én workspace-persist
+/// og parallel PTY-teardown. Resultatet er altid struktureret pr. target.
+/// Browser-cards: samme kaskade som close_card (expand → native preclose →
+/// persist → finish). kill_card/respawn_card roerer ALDRIG browser-kort (§3).
+#[cfg(feature = "perf-trace")]
+#[tauri::command]
+async fn close_cards(
+    app: AppHandle,
+    names: Vec<String>,
+    perf_trace: Option<String>,
+    perf_started_ms: Option<f64>,
+) -> Result<registry::CloseCardsResult, String> {
+    close_cards_impl(app, names, "batch", perf_trace, perf_started_ms).await
+}
+
+#[cfg(not(feature = "perf-trace"))]
+#[tauri::command]
+async fn close_cards(
+    app: AppHandle,
+    names: Vec<String>,
+) -> Result<registry::CloseCardsResult, String> {
+    close_cards_impl(app, names, "batch", None, None).await
+}
+
+#[inline(always)]
+#[cfg_attr(not(feature = "perf-trace"), allow(unused_variables))]
+async fn close_cards_impl(
+    app: AppHandle,
+    names: Vec<String>,
+    mode: &'static str,
+    perf_trace: Option<String>,
+    perf_started_ms: Option<f64>,
+) -> Result<registry::CloseCardsResult, String> {
     #[cfg(feature = "perf-trace")]
     let trace_id = perf_trace.clone();
     talminal_canvas_lib::perf_mark_for!(
         trace_id.as_deref(),
         "close",
         "close.command.received",
-        serde_json::json!({ "names": [&name], "mode": "single" }),
+        serde_json::json!({ "names": names, "mode": mode }),
     );
     #[cfg(feature = "perf-trace")]
     let context = perf_trace.map(|id| perf_trace::new_context(id, "close", perf_started_ms));
@@ -1195,11 +1247,11 @@ async fn close_card_impl(
         talminal_canvas_lib::perf_with_context!(context, {
             talminal_canvas_lib::perf_mark!(
                 "close.blocking.enter",
-                serde_json::json!({ "mode": "single" }),
+                serde_json::json!({ "mode": mode }),
             );
             #[cfg(feature = "perf-trace")]
             let expanded_started = Instant::now();
-            let expanded = registry::expand_close_targets(vec![name.clone()]);
+            let expanded = registry::expand_close_targets(names);
             talminal_canvas_lib::perf_mark!(
                 "close.expand.end",
                 serde_json::json!({
@@ -1219,90 +1271,6 @@ async fn close_card_impl(
                 mcp::clear_card_token(closed_name);
             }
             workspaces::status::refresh_card_counts();
-            if let Some(error) = result.errors.iter().find(|error| error.name == name) {
-                return Err(error.message.clone());
-            }
-            Ok(())
-        })
-    })
-    .await;
-    talminal_canvas_lib::perf_mark_for!(
-        trace_id.as_deref(),
-        "close",
-        "close.command.returning",
-        serde_json::json!({ "ok": result.is_ok(), "mode": "single" }),
-    );
-    result
-}
-
-/// Batch-close til voice/UI: én lifecycle-transaktion, én workspace-persist
-/// og parallel PTY-teardown. Resultatet er altid struktureret pr. target.
-/// Browser-cards: samme kaskade som close_card (expand → native preclose →
-/// persist → finish). kill_card/respawn_card roerer ALDRIG browser-kort (§3).
-#[cfg(feature = "perf-trace")]
-#[tauri::command]
-async fn close_cards(
-    app: AppHandle,
-    names: Vec<String>,
-    perf_trace: Option<String>,
-    perf_started_ms: Option<f64>,
-) -> Result<registry::CloseCardsResult, String> {
-    close_cards_impl(app, names, perf_trace, perf_started_ms).await
-}
-
-#[cfg(not(feature = "perf-trace"))]
-#[tauri::command]
-async fn close_cards(
-    app: AppHandle,
-    names: Vec<String>,
-) -> Result<registry::CloseCardsResult, String> {
-    close_cards_impl(app, names, None, None).await
-}
-
-#[inline(always)]
-#[cfg_attr(not(feature = "perf-trace"), allow(unused_variables))]
-async fn close_cards_impl(
-    app: AppHandle,
-    names: Vec<String>,
-    perf_trace: Option<String>,
-    perf_started_ms: Option<f64>,
-) -> Result<registry::CloseCardsResult, String> {
-    #[cfg(feature = "perf-trace")]
-    let trace_id = perf_trace.clone();
-    talminal_canvas_lib::perf_mark_for!(
-        trace_id.as_deref(),
-        "close",
-        "close.command.received",
-        serde_json::json!({ "names": names, "mode": "batch" }),
-    );
-    #[cfg(feature = "perf-trace")]
-    let context = perf_trace.map(|id| perf_trace::new_context(id, "close", perf_started_ms));
-    let result = run_blocking(move || {
-        talminal_canvas_lib::perf_with_context!(context, {
-            talminal_canvas_lib::perf_mark!(
-                "close.blocking.enter",
-                serde_json::json!({ "mode": "batch" }),
-            );
-            #[cfg(feature = "perf-trace")]
-            let expanded_started = Instant::now();
-            let expanded = registry::expand_close_targets(names);
-            talminal_canvas_lib::perf_mark!(
-                "close.expand.end",
-                serde_json::json!({
-                    "names": expanded,
-                    "duration_ms": expanded_started.elapsed().as_secs_f64() * 1_000.0,
-                }),
-            );
-            let result = browser_host::close_cards_lifecycle(
-                &app,
-                expanded,
-                workspace::close_cards_persisted,
-            )?;
-            // B3: samme afslutningsvej-regel som close_card_impl.
-            for closed_name in &result.closed {
-                mcp::clear_card_token(closed_name);
-            }
-            workspaces::status::refresh_card_counts();
             Ok(result)
         })
     })
@@ -1313,8 +1281,11 @@ async fn close_cards_impl(
         "close.command.returning",
         serde_json::json!({
             "ok": result.is_ok(),
-            "mode": "batch",
+            "mode": mode,
             "closed": result.as_ref().ok().map(|result| result.closed.len()),
+            // Pr.-target-fejl er ikke en Err paa transaktionen; uden dette felt
+            // ville en enkelt-close der fejlede se groen ud i traceet.
+            "errors": result.as_ref().ok().map(|result| result.errors.len()),
         }),
     );
     result
@@ -1838,17 +1809,9 @@ fn startup_lock_failure_message(slug: &str, lock_path: &std::path::Path, error: 
 /// direkte fra en terminal (den ene vej hvor stderr overlever) stadig faar
 /// teksten uden et klik.
 fn show_startup_error(message: &str) {
-    use std::os::windows::ffi::OsStrExt;
+    use talminal_canvas_lib::instance::to_wide;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, MB_ICONERROR, MB_OK, MB_SETFOREGROUND,
-    };
-    // Nul-termineret UTF-16, som Win32 kraever (samme moenster som
-    // `instance::to_wide`, hvis private udgave ikke er synlig herfra).
-    let to_wide = |s: &str| -> Vec<u16> {
-        std::ffi::OsStr::new(s)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
     };
     let text = to_wide(message);
     let caption = to_wide("Talminal");

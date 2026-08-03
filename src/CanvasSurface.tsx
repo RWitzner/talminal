@@ -154,8 +154,13 @@ export function CanvasSurface({
   const rootRef = useRef<HTMLDivElement>(null);
   const frameRefs = useRef(new Map<number, HTMLDivElement>());
 
-  const [mode, setMode] = useState<Mode>("canvas");
+  // ÉN kilde til fokus-tilstanden. `mode` var tidligere en selvstaendig
+  // `useState`, skrevet i lockstep med `focused` paa alle tre skrivesteder og
+  // laest som `mode === "type" && focused !== null` paa alle laesesteder — dvs.
+  // det samme faktum gemt to gange, med invarianten haandhaevet i hovedet.
+  // Nu er den afledt, og de to kan ikke komme ud af trit.
   const [focused, setFocused] = useState<number | null>(null);
+  const mode: Mode = focused === null ? "canvas" : "type";
   const [rootSize, setRootSize] = useState<{ w: number; h: number } | null>(null);
   const [spawnDialogOpen, setSpawnDialogOpen] = useState(false);
   const [spawnCwd, setSpawnCwd] = useState("");
@@ -222,7 +227,6 @@ export function CanvasSurface({
   // --- Type-mode ind/ud ----------------------------------------------------
 
   const enterTypeMode = (number: number) => {
-    setMode("type");
     setFocused(number);
   };
 
@@ -231,7 +235,6 @@ export function CanvasSurface({
     // efterfoelgende taster stadig ramme xterm's textarea.
     const ae = document.activeElement;
     if (ae instanceof HTMLElement) ae.blur();
-    setMode("canvas");
     setFocused(null);
   };
 
@@ -239,7 +242,6 @@ export function CanvasSurface({
     if (focused === null || cards.some((card) => card.number === focused)) return;
     // Et lukket/fjernet kort må ikke efterlade controlleren med et stale
     // type-mode-target.
-    setMode("canvas");
     setFocused(null);
   }, [cards, focused]);
 
@@ -480,7 +482,7 @@ export function CanvasSurface({
         );
       },
       getFocusedCard() {
-        return mode === "type" ? focused : null;
+        return focused;
       },
     }),
   );
@@ -492,7 +494,7 @@ export function CanvasSurface({
       ref={rootRef}
       data-canvas-root
       data-canvas-mode={mode}
-      data-focused-card={mode === "type" && focused !== null ? focused : ""}
+      data-focused-card={focused ?? ""}
       style={styles.root}
       onPointerDown={onRootPointerDown}
       onDoubleClick={onRootDoubleClick}
@@ -524,7 +526,7 @@ export function CanvasSurface({
       >
         {cards.map((card, index) => {
           const placement = tileLayout.tiles[index];
-          const isFocused = mode === "type" && focused === card.number;
+          const isFocused = focused === card.number;
           // Fuldskaerm hoerer til FRAMEN, ikke til korttypen: chat-kortet har
           // samme knap som browser-kortet. Gaten her var `isBrowserCard`, saa
           // et chat-kort satte fullscreenCard (ikonet skiftede) uden at framen
