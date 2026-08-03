@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { base64ToBuffer } from "../base64";
 import { createPcmPlayer, type PcmPlayer } from "./audioPlayer";
 import type { Reply } from "./replies";
 
@@ -22,15 +23,6 @@ interface OpenAiTtsDependencies {
   transport?: TtsTransport;
   player?: PcmPlayer;
   assets?: Map<string, ArrayBuffer>;
-}
-
-function decodeBase64(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes.buffer;
 }
 
 function defaultTransport(
@@ -145,7 +137,7 @@ export function createOpenAiTts(
               }),
               (base64Chunk) => {
                 if (stopped) return;
-                const audio = decodeBase64(base64Chunk);
+                const audio = base64ToBuffer(base64Chunk);
                 chain = chain.then(async () => {
                   if (stopped) return;
                   await playerReady;

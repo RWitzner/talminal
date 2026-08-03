@@ -20,6 +20,9 @@ use std::time::{Duration, Instant};
 
 use talminal_canvas_lib::cards::CardConfig;
 use talminal_canvas_lib::registry;
+
+mod common;
+use common::is_worker;
 use talminal_canvas_lib::workspace::{
     self, load_settings, load_workspace_file, save_workspace_file, settings_path, Settings,
     SettingsInput, Viewport, WorkspaceCard, WorkspaceFile, DEFAULT_EXIT_TYPE_MODE_HOTKEY,
@@ -111,10 +114,6 @@ fn run_worker_with_global(worker: &str, home: &Path, global: Option<&Path>) {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-}
-
-fn is_worker(name: &str) -> bool {
-    std::env::var("TALMINAL_WORKER").as_deref() == Ok(name)
 }
 
 fn home_from_env() -> PathBuf {

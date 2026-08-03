@@ -49,13 +49,11 @@ fn write_request(global_base: &Path, slug: &str, action: &str) -> Result<(), Str
         return Ok(());
     }
 
-    let mut body = serde_json::to_string_pretty(&CloseRequest {
+    let request = CloseRequest {
         request_id: existing.map(|request| request.request_id).unwrap_or(0) + 1,
         action: action.into(),
-    })
-    .map_err(|e| e.to_string())?;
-    body.push('\n');
-    atomic::write(&path(global_base, slug), body.as_bytes()).map_err(|e| e.to_string())
+    };
+    atomic::write_json_pretty(&path(global_base, slug), &request).map_err(|e| e.to_string())
 }
 
 /// Henter og FJERNER en ventende anmodning.

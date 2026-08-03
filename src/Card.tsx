@@ -11,6 +11,8 @@ import type {
   CardState,
   PtyOutputEvent,
 } from "./types";
+import { base64ToBytes } from "./base64";
+import { CARD_HEADER, CARD_NUMBER_BADGE, CARD_SHELL } from "./cardChrome";
 import { cardColor } from "./colors";
 import { cardLabel } from "./cardLabel";
 import { ContextBadge } from "./ContextBadge";
@@ -65,13 +67,6 @@ const STATUS_COLOR: Record<CardColor, string> = {
 // een ad gangen pr. kortnavn — dobbeltklik, HMR/remounts (og en evt.
 // fremtidig StrictMode) er dermed ufarlige.
 const spawnPromises = new Map<string, Promise<void>>();
-
-function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
 
 export function Card({
   card,
@@ -656,39 +651,12 @@ export function Card({
 }
 
 const styles: Record<string, CSSProperties> = {
-  card: {
-    border: "none",
-    borderRadius: 13,
-    background:
-      "linear-gradient(145deg, rgba(13, 22, 34, 0.98), rgba(2, 7, 14, 0.99))",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    boxShadow: "inset 0 1px 0 rgba(229, 244, 255, 0.1)",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    minHeight: 35,
-    padding: "0 8px 0 9px",
-    borderBottom: "1px solid rgba(207, 232, 255, 0.08)",
-    background:
-      "linear-gradient(180deg, rgba(31, 42, 56, 0.98), rgba(12, 18, 27, 0.98))",
-    fontSize: 12,
-  },
+  card: CARD_SHELL,
+  header: { ...CARD_HEADER, fontSize: 12 },
   numberBadge: {
-    minWidth: 19,
-    boxSizing: "border-box",
-    padding: "1px 5px",
-    border: "1px solid rgba(187, 211, 233, 0.14)",
-    borderRadius: 6,
-    background: "rgba(112, 137, 163, 0.15)",
-    color: "#9eafc1",
-    textAlign: "center",
-    fontSize: 10,
-    fontWeight: 700,
-    fontVariantNumeric: "tabular-nums",
+    ...CARD_NUMBER_BADGE,
+    // Kun terminal-kortets badge skifter udseende (fokus-tilstanden nedenfor),
+    // saa kun den har brug for en overgang.
     transition: "background 180ms, border-color 180ms, color 180ms",
   },
   numberBadgeFocused: {

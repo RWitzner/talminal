@@ -1,4 +1,5 @@
 mod common;
+use common::FakeClock;
 
 use std::sync::{Arc, Mutex};
 use talminal_canvas_lib::threads::dispatch;
@@ -6,12 +7,6 @@ use talminal_canvas_lib::threads::heartbeat::{self, ChangeTracker};
 use talminal_canvas_lib::threads::policy::AcceptsFromView;
 use talminal_canvas_lib::threads::{self, FromKind, Intent, PostRequest, TerminalReason};
 
-struct FakeClock(Arc<Mutex<u64>>);
-impl dispatch::Clock for FakeClock {
-    fn now_ms(&self) -> u64 {
-        *self.0.lock().unwrap()
-    }
-}
 struct Silent;
 impl dispatch::Notifier for Silent {
     fn is_busy(&self, _card: &str) -> bool {

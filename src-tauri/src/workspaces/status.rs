@@ -179,12 +179,7 @@ pub fn refresh_card_counts() {
         return;
     };
     // Registry-låsene tages og slippes HER — før writeren overhovedet røres.
-    let kort = crate::registry::list_cards();
-    let antal = kort.len() as u32;
-    let koerende = kort
-        .iter()
-        .filter(|card| card.kind == "terminal" && card.running)
-        .count() as u32;
+    let (antal, koerende) = crate::registry::card_counts();
     writer.update(|status| {
         status.cards = antal;
         status.running_cards = koerende;

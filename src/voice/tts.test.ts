@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PcmPlayer } from "./audioPlayer";
+import { deferred } from "../testHelpers";
 import {
   TTS_INSTRUCTIONS,
   TTS_MODEL,
@@ -19,15 +20,6 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: FakeChannel,
 }));
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 function pcmBase64(bytes = [0, 0]): string {
   return btoa(String.fromCharCode(...bytes));

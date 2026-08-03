@@ -382,6 +382,25 @@ pub enum Step {
     SuppressedModifierDown,
 }
 
+/// Modifier-reglen — SUBSET-match, ikke exact: en kombo kraever de modifiers
+/// den navngiver, og er ligeglad med resten. En BAR kombo (ingen modifiers)
+/// kraever derimod at INGEN modifier er nede.
+///
+/// Reglen er normativ og skal staa i lockstep med `ptt.ts::matchesAccelerator`
+/// paa den anden side af sproggraensen (se modulets hoved-kommentar). Netop
+/// derfor bor den ét sted her: `step` evaluerede den tidligere to gange —
+/// én gang i AltGr-grenen og én gang i den normale — med to identiske kopier
+/// tyve linjer fra hinanden.
+fn combo_matches(combo: &KeyCombo, snapshot: &PollSnapshot) -> bool {
+    if combo.is_bare() {
+        !snapshot.ctrl_or_meta && !snapshot.shift && !snapshot.alt
+    } else {
+        (!combo.ctrl || snapshot.ctrl_or_meta)
+            && (!combo.shift || snapshot.shift)
+            && (!combo.alt || snapshot.alt)
+    }
+}
+
 impl ComboEdgeDetector {
     pub fn reset(&mut self) {
         self.trigger_held = false;
@@ -420,13 +439,7 @@ impl ComboEdgeDetector {
         }
         let bare = combo.is_bare();
         if snapshot.right_alt {
-            let would_have_matched = if bare {
-                !snapshot.ctrl_or_meta && !snapshot.shift && !snapshot.alt
-            } else {
-                (!combo.ctrl || snapshot.ctrl_or_meta)
-                    && (!combo.shift || snapshot.shift)
-                    && (!combo.alt || snapshot.alt)
-            };
+            let would_have_matched = combo_matches(combo, snapshot);
             if would_have_matched && snapshot.window_focused && !self.altgr_logged {
                 self.altgr_logged = true;
                 return Step::SuppressedAltGr;
@@ -436,14 +449,7 @@ impl ComboEdgeDetector {
         if bare && !rising {
             return Step::None;
         }
-        let matches = if bare {
-            !snapshot.ctrl_or_meta && !snapshot.shift && !snapshot.alt
-        } else {
-            (!combo.ctrl || snapshot.ctrl_or_meta)
-                && (!combo.shift || snapshot.shift)
-                && (!combo.alt || snapshot.alt)
-        };
-        if !matches {
+        if !combo_matches(combo, snapshot) {
             if bare && !self.disqualified_logged {
                 self.disqualified_logged = true;
                 return Step::SuppressedModifierDown;

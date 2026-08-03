@@ -1,3 +1,4 @@
+import { asError } from "./errors";
 import type { SttClient } from "./stt";
 import { getActiveVoiceTrace, markPerf } from "../perfTrace";
 import { describeMicrophoneFailure, MicrophoneError } from "./micError";
@@ -499,10 +500,6 @@ export async function startBrowserCapture(
     await stop();
     throw error;
   }
-}
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
 
 export function createPtt(deps: {

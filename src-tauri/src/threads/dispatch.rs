@@ -83,15 +83,14 @@ pub fn deliver(card: &str, thread: &str) -> TickOutcome {
     let Some((clock, notifier)) = current() else {
         return TickOutcome::Nothing;
     };
-    let count = super::inbox_len(thread, card);
-    let waiting = super::get(thread).is_some_and(|current| current.wake.contains(card));
+    let (count, waiting) = super::inbox_state(thread, card);
     if !waiting || count == 0 {
         return TickOutcome::Nothing;
     }
-    let key = (card.to_string(), thread.to_string());
     if notifier.is_busy(card) {
         return TickOutcome::Busy;
     }
+    let key = (card.to_string(), thread.to_string());
     match notifier.write_notice(card, &notice_text(thread, count)) {
         Ok(()) => {
             super::clear_wake(card, thread);

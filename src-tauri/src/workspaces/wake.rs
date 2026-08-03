@@ -66,7 +66,6 @@ pub fn notify_badge_refresh() {
 mod platform {
     use super::*;
     use sha2::{Digest, Sha256};
-    use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
     use windows_sys::Win32::System::Threading::{
         CreateEventW, OpenEventW, SetEvent, WaitForSingleObject, EVENT_MODIFY_STATE,
@@ -86,10 +85,7 @@ mod platform {
         digest.update([0]);
         digest.update(slug.as_bytes());
         let hash = format!("{:x}", digest.finalize());
-        std::ffi::OsStr::new(&format!("Local\\Talminal-WorkspaceWake-{hash}"))
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect()
+        crate::instance::to_wide(&format!("Local\\Talminal-WorkspaceWake-{hash}"))
     }
 
     pub struct PollWake {

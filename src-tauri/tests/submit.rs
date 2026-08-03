@@ -8,6 +8,7 @@ use talminal_canvas_lib::pty::{PtyHost, PtySpawn};
 use talminal_canvas_lib::{registry, submit};
 
 mod common;
+use common::cmd_exe;
 
 #[test]
 fn submit_prompt_delegates_to_submit_prompt_as_with_human_source() {
@@ -25,11 +26,6 @@ fn submit_prompt_delegates_to_submit_prompt_as_with_human_source() {
 fn write_source_labels_are_the_frozen_control_contract() {
     assert_eq!(submit::WriteSource::Human.as_str(), "human");
     assert_eq!(submit::WriteSource::Agent.as_str(), "agent");
-}
-
-fn cmd_exe() -> String {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    format!(r"{root}\System32\cmd.exe")
 }
 
 fn wait_for(

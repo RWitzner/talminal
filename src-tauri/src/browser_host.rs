@@ -1524,18 +1524,27 @@ fn emit_card_update(app: &AppHandle, name: &str) {
     }
 }
 
-fn browser_cards_alive() -> Vec<(String, bool)> {
+/// Én walk over registryet — og det ENE sted `CardBackend`s tre-arms-match
+/// staar i denne fil. Opslagene nedenfor var tidligere fem kopier af den samme
+/// laas-og-match-loekke, saa en fjerde backend-variant kostede fem
+/// redigeringer her alene; nu koster den én.
+fn map_browser_cards<T>(
+    mut pick: impl FnMut(&registry::CardRuntime, &registry::BrowserRuntime) -> Option<T>,
+) -> Vec<T> {
     registry::all_handles()
         .iter()
-        .filter_map(|h| {
-            let c = h.lock().ok()?;
-            match &c.backend {
-                registry::CardBackend::Browser(b) => Some((b.name.clone(), b.alive)),
-                registry::CardBackend::Terminal(_) => None,
-                registry::CardBackend::Chat(_) => None,
-            }
+        .filter_map(|handle| {
+            let card = handle.lock().ok()?;
+            let registry::CardBackend::Browser(browser) = &card.backend else {
+                return None;
+            };
+            pick(&card, browser)
         })
         .collect()
+}
+
+fn browser_cards_alive() -> Vec<(String, bool)> {
+    map_browser_cards(|_, b| Some((b.name.clone(), b.alive)))
 }
 
 /// Alive-flaget for ét browser-kort — `false` for ukendte/fjernede kort, saa
@@ -1549,60 +1558,37 @@ fn browser_card_alive(name: &str) -> bool {
     };
     match &card.backend {
         registry::CardBackend::Browser(b) => b.alive,
-        registry::CardBackend::Terminal(_) => false,
-        registry::CardBackend::Chat(_) => false,
+        registry::CardBackend::Terminal(_) | registry::CardBackend::Chat(_) => false,
     }
 }
 
 /// (name, target_id, alive) for hvert browser-kort i et scope — polleren.
 fn browser_cards_in_scope(scope_key: &str) -> Vec<(String, String, bool)> {
-    let mut out = Vec::new();
-    for handle in registry::all_handles() {
-        if let Ok(card) = handle.lock() {
-            if let registry::CardBackend::Browser(b) = &card.backend {
-                if b.scope_key == scope_key {
-                    out.push((b.name.clone(), b.target_id.clone(), b.alive));
-                }
-            }
-        }
-    }
-    out
+    map_browser_cards(|_, b| {
+        (b.scope_key == scope_key).then(|| (b.name.clone(), b.target_id.clone(), b.alive))
+    })
 }
 
 /// (name, opened_by) for browser-kortet med et givent nummer. `None` hvis
 /// nummeret ikke findes ELLER peger paa et terminal-kort.
 fn browser_card_by_number(number: u32) -> Option<(String, Option<String>)> {
-    for handle in registry::all_handles() {
-        if let Ok(card) = handle.lock() {
-            if card.number == number {
-                return match &card.backend {
-                    registry::CardBackend::Browser(b) => {
-                        Some((b.name.clone(), b.opened_by.clone()))
-                    }
-                    registry::CardBackend::Terminal(_) => None,
-                    registry::CardBackend::Chat(_) => None,
-                };
-            }
-        }
-    }
-    None
+    map_browser_cards(|card, b| {
+        (card.number == number).then(|| (b.name.clone(), b.opened_by.clone()))
+    })
+    .into_iter()
+    .next()
 }
 
 fn browser_card_rows() -> Vec<mcp::BrowserCardRow> {
-    let mut rows = Vec::new();
-    for handle in registry::all_handles() {
-        if let Ok(card) = handle.lock() {
-            if let registry::CardBackend::Browser(b) = &card.backend {
-                rows.push(mcp::BrowserCardRow {
-                    number: card.number,
-                    opened_by: b.opened_by.clone(),
-                    url: b.url.clone(),
-                    title: b.title.clone(),
-                    target_id: b.target_id.clone(),
-                });
-            }
-        }
-    }
+    let mut rows = map_browser_cards(|card, b| {
+        Some(mcp::BrowserCardRow {
+            number: card.number,
+            opened_by: b.opened_by.clone(),
+            url: b.url.clone(),
+            title: b.title.clone(),
+            target_id: b.target_id.clone(),
+        })
+    });
     rows.sort_by_key(|r| r.number);
     rows
 }

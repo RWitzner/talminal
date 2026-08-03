@@ -1,4 +1,5 @@
 mod common;
+use common::FakeClock;
 
 use std::sync::{Arc, Mutex};
 use talminal_canvas_lib::threads::dispatch::{self, TickOutcome};
@@ -23,14 +24,6 @@ impl dispatch::Notifier for FakeNotifier {
         }
         self.writes.lock().unwrap().push((card.into(), text.into()));
         Ok(())
-    }
-}
-
-struct FakeClock(Arc<Mutex<u64>>);
-
-impl dispatch::Clock for FakeClock {
-    fn now_ms(&self) -> u64 {
-        *self.0.lock().unwrap()
     }
 }
 

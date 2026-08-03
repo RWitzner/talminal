@@ -29,12 +29,7 @@ pub struct UsageSnapshot {
     pub session_id: Option<String>,
 }
 
-fn clamp_percent(value: f64) -> Option<f64> {
-    if !value.is_finite() {
-        return None;
-    }
-    Some(value.clamp(0.0, 100.0))
-}
+use crate::context_hud::clamp_percent;
 
 pub fn read_snapshot_at(path: &Path) -> Option<UsageSnapshot> {
     let text = std::fs::read_to_string(path).ok()?;

@@ -9,8 +9,6 @@
 //! Format (skelet-kanonisk):
 //!   {"schema_version": 1, "epoch": <u64>, "ts": "<ISO Z>", "source": "canvas"}
 
-use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -44,13 +42,6 @@ impl From<serde_json::Error> for SignalError {
     }
 }
 
-/// Samme tidsformat som controlleren/proben: YYYY-MM-DDTHH:MM:SS.mmmZ.
-pub fn now_iso_z() -> String {
-    chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
-}
-
 /// Kortnavne kommer fra lokal, trusted cards.toml — men de bliver til
 /// filnavne, så alt der kan ændre stien afvises (bælte og seler).
 fn validate_session(session: &str) -> Result<(), SignalError> {
@@ -72,25 +63,19 @@ fn write_signal(
     epoch: u64,
 ) -> Result<PathBuf, SignalError> {
     validate_session(session)?;
-    fs::create_dir_all(signals_dir)?;
     let final_path = signals_dir.join(format!("{session}.{kind}.json"));
-    let tmp_path = signals_dir.join(format!("{session}.{kind}.json.tmp"));
     let body = serde_json::json!({
         "schema_version": 1,
         "epoch": epoch,
-        "ts": now_iso_z(),
+        "ts": crate::workspaces::now_iso_z(),
         "source": "canvas",
     });
-    let mut f = fs::File::create(&tmp_path)?;
-    f.write_all(serde_json::to_string(&body)?.as_bytes())?;
-    f.sync_all()?;
-    drop(f);
-    // std::fs::rename bruger MOVEFILE_REPLACE_EXISTING på Windows — en
-    // efterladt signalfil (controller offline) overskrives i stedet for
+    // Den delte atomic::write renamer med MOVEFILE_REPLACE_EXISTING på Windows
+    // — en efterladt signalfil (controller offline) overskrives i stedet for
     // at fejle; nyeste epoch vinder. Replacen kan aldrig ramme en fil,
     // controlleren er midt i at forbruge: den claimer (renamer VÆK fra
     // final-stien) før læsning (fix F7, controller-Task 4).
-    fs::rename(&tmp_path, &final_path)?;
+    crate::atomic::write(&final_path, serde_json::to_string(&body)?.as_bytes())?;
     Ok(final_path)
 }
 

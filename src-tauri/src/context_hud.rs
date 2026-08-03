@@ -31,7 +31,10 @@ pub struct ContextSnapshot {
     pub model_display_name: Option<String>,
 }
 
-fn clamp_percent(value: f64) -> Option<f64> {
+/// Delt af begge HUD-laesere (`usage_hud` kalder samme funktion): et snapshot
+/// med NaN/inf forkastes, resten klemmes til 0..100. De to moduler spejlede
+/// tidligere hinandens kopi — én kilde saa de ikke kan drifte fra hinanden.
+pub(crate) fn clamp_percent(value: f64) -> Option<f64> {
     if !value.is_finite() {
         return None;
     }

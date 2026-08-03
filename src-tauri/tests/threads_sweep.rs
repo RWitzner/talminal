@@ -1,17 +1,10 @@
 mod common;
+use common::FakeClock;
 
 use std::sync::{Arc, Mutex};
 use talminal_canvas_lib::threads::dispatch::{self, TickOutcome};
 use talminal_canvas_lib::threads::policy::AcceptsFromView;
 use talminal_canvas_lib::threads::{self, sweep, FromKind, Intent, PostRequest, ThreadState};
-
-struct FakeClock(Arc<Mutex<u64>>);
-
-impl dispatch::Clock for FakeClock {
-    fn now_ms(&self) -> u64 {
-        *self.0.lock().unwrap()
-    }
-}
 
 #[derive(Default)]
 struct FakeNotifier {

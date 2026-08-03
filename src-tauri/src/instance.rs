@@ -146,9 +146,7 @@ struct InstanceInfo {
 pub fn write_instance_info(state_dir: &Path, pid: u32, hwnd: isize) -> io::Result<()> {
     fs::create_dir_all(state_dir)?;
     let info = InstanceInfo { pid, hwnd };
-    let mut body = serde_json::to_string_pretty(&info).map_err(io::Error::other)?;
-    body.push('\n');
-    crate::atomic::write(&state_dir.join("instance.json"), body.as_bytes())
+    crate::atomic::write_json_pretty(&state_dir.join("instance.json"), &info)
 }
 
 pub fn read_instance_info(state_dir: &Path) -> Option<(u32, isize)> {
@@ -303,7 +301,10 @@ fn find_window_for_project(state_dir: &Path) -> Option<isize> {
     }
 }
 
-fn to_wide(s: &str) -> Vec<u16> {
+/// Nul-termineret UTF-16, som Win32 kraever. `pub`, fordi den ellers bliver
+/// inlinet igen hver gang en anden kalder skal ramme et W-API — den var
+/// kopieret som lokal closure i binary-cratens opstartsdialog.
+pub fn to_wide(s: &str) -> Vec<u16> {
     std::ffi::OsStr::new(s)
         .encode_wide()
         .chain(std::iter::once(0))

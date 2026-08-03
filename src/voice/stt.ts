@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { bytesToBase64 } from "../base64";
 
 export interface SttClient {
   start(): Promise<void>;
@@ -12,16 +13,6 @@ const FINAL_TIMEOUT_MS = 10_000;
 
 export const STT_DOMAIN_PROMPT =
   "Dansk kommando til en canvas af nummererede kort: kort et, to, tre, fire, fem, seks, syv, otte, ni, ti. Typiske verber: luk, genstart, åbn, opret, send, sig til, bed. Ord som terminal, browser, projekt, canvas. Flere kommandoer kan kædes med og. Blandet dansk og engelsk kan forekomme.";
-
-function bytesToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const stride = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += stride) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + stride));
-  }
-  return btoa(binary);
-}
 
 function errorMessage(payload: unknown): string {
   if (typeof payload === "object" && payload !== null) {
