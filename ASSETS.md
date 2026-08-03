@@ -134,7 +134,8 @@ Motivet viser fire kort: to Claude-kort, et Codex-kort og et browser-kort.
 
 **IKKE SANITERET — må ikke følge med til visibility-flippet i denne form.** Launch-spec'ens
 §4 kræver demomateriale uden rigtige stier, navne og projektdata. Billedet indeholder
-mindst: `C:\Users\Robin\talminal` i titelbjælken, "Welcome back Robin!" i begge
+mindst: ejerens fulde hjemmemappe-sti (`C:\Users\x\talminal` — her med repoets neutrale
+pladsholder) i titelbjælken, en personlig hilsen med fornavn i begge
 Claude-kort, `~\talminal` i Codex-kortet, abonnementsniveau (`Claude Max`), kontotilstand
 ("3 usage limit resets available"), en konkret `PR #12`, en advarsel om en MCP-server der
 mangler autentificering — og `permissions: YOLO mode`.
