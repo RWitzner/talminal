@@ -107,8 +107,73 @@ struct BrowserCardDead {
 // Rene funktioner (unit-testet i tests/browser_lifecycle.rs)
 // ---------------------------------------------------------------------------
 
+/// Origins der tilhoerer APPEN selv, som `host` eller `host:port`.
+///
+/// **Gate 2.** Browser-kort er child-webviews inde i vinduet `main`
+/// (`add_child` nedenfor), og Tauri injicerer `__TAURI_INTERNALS__` UBETINGET
+/// i hver child-webview — der er ingen External-gate i injektionen. Det der
+/// redder os er Tauris egen remote-origin-check: en fremmed side faar
+/// `acl = None` og afvises ved kommando-dispatch.
+///
+/// Men capability'en er VINDUE-targetet (`capabilities/default.json`:
+/// `"windows": ["main"]`, ingen `webviews`-noegle), saa hele graensen hviler
+/// paa én ting: at et browser-kort aldrig staar paa appens egen origin. Sker
+/// det, er kortet `is_local` og faar hele `generate_handler!`-fladen — en
+/// eskalering FORBI PTY-graensen, som modsiger SECURITY.md's loefte om at et
+/// kort giver samme adgang som en terminal.
+///
+/// Dev-originen er med med vilje: `is_local_url` i tauri matcher ogsaa alt
+/// relativt til `get_app_url()`, som i dev er `build.devUrl` — og dev-bygget
+/// er praecis det CONTRIBUTING beder enhver bidragyder koere.
+/// `dev_origin_constant_matches_tauri_conf` haandhaever at listen ikke drifter.
+pub const APP_ORIGINS: &[&str] = &[
+    "tauri.localhost",
+    "localhost:1420",
+    "127.0.0.1:1420",
+    "[::1]:1420",
+];
+
+/// Sammenlignings-noegle for en URL: `host` eller `host:port`, lowercased og
+/// uden trailing dot.
+///
+/// Normaliseringen er ikke pedanteri — `TAURI.LOCALHOST` og `tauri.localhost.`
+/// rammer samme vaert i en browser, saa en ren streng-sammenligning ville
+/// vaere en aaben doer.
+fn origin_key(u: &url::Url) -> String {
+    let host = u
+        .host_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    match u.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    }
+}
+
+/// Er URL'en appens egen origin? Se `APP_ORIGINS`.
+pub fn is_app_origin(u: &url::Url) -> bool {
+    let key = origin_key(u);
+    APP_ORIGINS.iter().any(|o| *o == key)
+}
+
+/// Navigations-politikken som en ren funktion, saa den kan testes.
+///
+/// Den var foer en anonym closure inde i `create_card_webview`, altsaa kun
+/// naabar gennem `WebviewBuilder` — og dermed utestbar. Politikken og
+/// sideeffekten (registry-opdatering + event) er nu adskilt: closuren
+/// beslutter intet selv.
+pub fn navigation_allowed(u: &url::Url) -> bool {
+    match u.scheme() {
+        "http" | "https" => !is_app_origin(u),
+        // about:blank er den interne blank-mekanisme; alt andet
+        // (file:/javascript:/data: …) afvises (spec §4/§7).
+        _ => u.as_str() == "about:blank",
+    }
+}
+
 /// URL-politik (spec §4/§7): `None` ⇒ `about:blank` (intern blank-mekanisme);
-/// ellers kun `http`/`https`. Alt andet ⇒ `Err`.
+/// ellers kun `http`/`https`, og aldrig appens egen origin (gate 2).
 pub fn validate_card_url(url: Option<&str>) -> Result<String, String> {
     match url {
         None => Ok("about:blank".to_string()),
@@ -117,7 +182,14 @@ pub fn validate_card_url(url: Option<&str>) -> Result<String, String> {
                 .parse()
                 .map_err(|_| format!("unsupported url scheme: {raw}"))?;
             match parsed.scheme() {
-                "http" | "https" => Ok(raw.to_string()),
+                "http" | "https" => {
+                    if is_app_origin(&parsed) {
+                        return Err(format!(
+                            "appens egen origin kan ikke vaere et kort-maal: {raw}"
+                        ));
+                    }
+                    Ok(raw.to_string())
+                }
                 other => Err(format!("unsupported url scheme: {other}")),
             }
         }
@@ -909,8 +981,15 @@ fn create_card_webview(
             .data_directory(dir)
             .additional_browser_args(&args)
             .on_navigation(move |u: &url::Url| {
-                let scheme = u.scheme();
-                if scheme == "http" || scheme == "https" {
+                // Politikken bor i `navigation_allowed` — closuren beslutter
+                // intet selv. Den daekker BEGGE veje ind: `validate_card_url`
+                // ved oprettelse, og denne ved enhver senere navigation
+                // (inkl. redirects, som er den vej en fremmed side ellers
+                // kunne foere kortet hen paa appens origin).
+                if !navigation_allowed(u) {
+                    return false;
+                }
+                if matches!(u.scheme(), "http" | "https") {
                     let _ = registry::update_browser_card(
                         &name_nav,
                         Some(u.to_string()),
@@ -919,12 +998,8 @@ fn create_card_webview(
                         None,
                     );
                     emit_card_update(&app_nav, &name_nav);
-                    true
-                } else {
-                    // about:blank er den interne blank-mekanisme; alt andet
-                    // (file:/javascript:/data: …) afvises (spec §4/§7).
-                    u.as_str() == "about:blank"
                 }
+                true
             })
             .on_document_title_changed(move |_wv, title| {
                 let _ = registry::update_browser_card(&name_title, None, Some(title), None, None);
