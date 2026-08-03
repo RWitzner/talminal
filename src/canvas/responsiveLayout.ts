@@ -32,9 +32,10 @@ export const TOPBAR_TOP = 12;
 export const TOPBAR_HEIGHT = 38;
 export const TOPBAR_CLEARANCE = TOPBAR_TOP + TOPBAR_HEIGHT;
 
-/** Den fulde reserverede topzone: titlebar-clearance plus 8px luft.
+/** Den reserverede topzone. Lig med titlebar-clearance — zonen dækker
+ *  trække-bjælken og intet andet.
  *
- *  Historik, fordi tallet har været 26px større i seks uger uden grund:
+ *  Historik, fordi tallet har været 34px større i seks uger uden grund:
  *  `905c0e5` (2026-07-20) reserverede et ekstra 26px-bånd, fordi HUD-chippen
  *  dengang sad ØVERST på 58px og lagde sig oven på det øverste højre kort.
  *  Dagen efter flyttede `9609942` usage-baren ned i venstre hjørne
@@ -42,14 +43,18 @@ export const TOPBAR_CLEARANCE = TOPBAR_TOP + TOPBAR_HEIGHT;
  *  har siden reserveret plads til noget der ikke er der. Verificeret: Hud.tsx
  *  har ingen reference til topbar-konstanterne og positionerer intet i zonen.
  *
- *  De 8px er luft under bjælken og bliver. Vokser tallet igen, skal det være
- *  fordi noget FAKTISK tegnes deroppe — ikke fordi det engang gjorde.
+ *  Zonen er nu præcis bjælken og intet andet (ejer-retning 2026-08-03:
+ *  "det må godt starte lige under" trække-bjælken). Luften mellem bjælken og
+ *  det øverste kort kommer alene fra grid-paddingen — de samme 18px som mod
+ *  venstre og højre kant, så afstanden er symmetrisk hele vejen rundt.
+ *  Vokser tallet igen, skal det være fordi noget FAKTISK tegnes deroppe —
+ *  ikke fordi det engang gjorde.
  *
  *  NB: `notice`-banneret (App.tsx) ligger på TOPBAR_CLEARANCE + TOPBAR_TOP og
  *  er ~42px højt, altså 62-104. Det overlapper kortene uanset denne konstant
  *  — det er et `position: absolute`-overlay med zIndex 10, ikke noget gridden
  *  gør plads til. Zonen her er ikke stedet at løse det. */
-export const TOP_ZONE_CLEARANCE = TOPBAR_CLEARANCE + 8;
+export const TOP_ZONE_CLEARANCE = TOPBAR_CLEARANCE;
 
 /** Voice-orbens bundbånd (spec 2026-07-20 §6). Samme disciplin som
  *  TOPBAR_CLEARANCE: både grid-padding og layout-matematikken skal kende

@@ -266,11 +266,11 @@ describe("CanvasSurface responsive tile-layout", () => {
     // Default-padding 18 + ORB_DOCK_CLEARANCE 88 — terminalerne må aldrig
     // tegne ind i orbens bundbånd.
     expect(grid!.style.paddingBottom).toBe("106px");
-    // Default-padding 18 + TOP_ZONE_CLEARANCE 58 (titlebar 50 + 8px luft).
+    // Default-padding 18 + TOP_ZONE_CLEARANCE 50 (= traekke-bjaelken alene).
     // Tallet var 84 indtil 2026-08-03: de 26 ekstra reserverede plads til en
     // HUD-chip der flyttede til bundbåndet dagen efter reservationen blev
     // lavet. Se responsiveLayout.ts for datoerne.
-    expect(grid!.style.paddingTop).toBe("76px");
+    expect(grid!.style.paddingTop).toBe("68px");
   });
 
   it("tegner wallpaperet i glaslaget alene — roden har ingen egen baggrund", async () => {
@@ -440,9 +440,9 @@ describe("CanvasSurface responsive tile-layout", () => {
 
     expect(frame!.dataset.browserFullscreenFrame).toBe("true");
     expect(frame!.style.position).toBe("absolute");
-    // TOP_ZONE_CLEARANCE 58: titlebar 50 + 8px luft. Var 84 indtil 2026-08-03,
+    // TOP_ZONE_CLEARANCE 50 = traekke-bjaelken alene. Var 84 indtil 2026-08-03,
     // hvor et efterladt HUD-chip-baand blev fjernet (se responsiveLayout.ts).
-    expect(frame!.style.top).toBe("58px");
+    expect(frame!.style.top).toBe("50px");
     expect(frame!.style.bottom).toBe("0px");
     expect(fullscreenButton!.getAttribute("aria-label")).toBe(
       "Afslut fuldskærm",
@@ -481,9 +481,9 @@ describe("CanvasSurface responsive tile-layout", () => {
 
     expect(frame!.dataset.cardFullscreen).toBe("true");
     expect(frame!.style.position).toBe("absolute");
-    // TOP_ZONE_CLEARANCE 58: titlebar 50 + 8px luft. Var 84 indtil 2026-08-03,
+    // TOP_ZONE_CLEARANCE 50 = traekke-bjaelken alene. Var 84 indtil 2026-08-03,
     // hvor et efterladt HUD-chip-baand blev fjernet (se responsiveLayout.ts).
-    expect(frame!.style.top).toBe("58px");
+    expect(frame!.style.top).toBe("50px");
     expect(frame!.style.bottom).toBe("0px");
     expect(button!.getAttribute("aria-label")).toBe("Afslut fuldskærm");
     // Navnet er IKKE et browser-kort, og det er meningen: fuldskaerms-gaten
