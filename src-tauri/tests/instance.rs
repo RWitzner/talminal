@@ -19,14 +19,13 @@ use talminal_canvas_lib::project::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
 
+mod common;
+use common::is_worker;
+
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-fn is_worker(name: &str) -> bool {
-    std::env::var("TALMINAL_WORKER").as_deref() == Ok(name)
 }
 
 fn wait_for_file(path: &Path, timeout: Duration) {

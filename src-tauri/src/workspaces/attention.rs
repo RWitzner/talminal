@@ -49,6 +49,10 @@ struct Inner {
     /// Sidste bytes fra forrige chunk, så et mønster på chunk-grænsen findes.
     /// Bundet til `max_pattern_len - 1` — aldrig af outputmængden.
     tail: Vec<u8>,
+    /// Genbrugt buffer til grænse-vinduet. Bor her frem for som en lokal
+    /// `Vec`, så `on_output` ikke allokerer i steady state — den kaldes for
+    /// HVER chunk på reader-tråden, som per `pty.rs`' FUND 2 altid skal dræne.
+    scratch: Vec<u8>,
 }
 
 pub struct CardAttention {
@@ -68,6 +72,7 @@ impl CardAttention {
                 workspace_visible: true,
                 last_output_ms: 0,
                 tail: Vec::new(),
+                scratch: Vec::new(),
             }),
         }
     }
@@ -85,13 +90,42 @@ impl CardAttention {
         let mut i = self.inner.lock().unwrap_or_else(|p| p.into_inner());
         i.last_output_ms = now_ms;
 
-        // Søg i hale + nyt chunk, så et mønster der falder på grænsen findes.
-        let mut vindue = std::mem::take(&mut i.tail);
-        vindue.extend_from_slice(bytes);
-        let matchede = self.patterns.iter().any(|p| contains(&vindue, p));
+        // To søgninger i stedet for én over `hale ++ chunk`, og de dækker
+        // tilsammen præcis det samme:
+        //
+        //   - et mønster HELT inde i chunket findes af `contains(bytes, ..)`;
+        //   - et mønster der rører halen — enten fordi det krydser grænsen
+        //     eller fordi det ligger helt i halen — kan højst nå
+        //     `max_pattern_len - 1` bytes ind i chunket, så det findes i
+        //     grænse-vinduet `hale ++ chunk[..overlap]`.
+        //
+        // Den gamle form byggede `hale ++ HELE chunket` op i en frisk `Vec`
+        // og skrev derefter halen tilbage med endnu en: to allokeringer plus
+        // en memcpy af hele chunket, per chunk, på drain-tråden.
+        let overlap = self.max_pattern_len.saturating_sub(1);
+        let i = &mut *i;
+        i.scratch.clear();
+        if !i.tail.is_empty() {
+            i.scratch.extend_from_slice(&i.tail);
+            i.scratch
+                .extend_from_slice(&bytes[..overlap.min(bytes.len())]);
+        }
+        let matchede = self
+            .patterns
+            .iter()
+            .any(|p| contains(bytes, p) || contains(&i.scratch, p));
+
         // Behold kun så meget hale som det længste mønster kan spænde over.
-        let behold = self.max_pattern_len.saturating_sub(1).min(vindue.len());
-        i.tail = vindue[vindue.len() - behold..].to_vec();
+        // Opdateres på plads, så kapaciteten genbruges.
+        let behold = overlap.min(i.tail.len() + bytes.len());
+        if bytes.len() >= behold {
+            i.tail.clear();
+            i.tail.extend_from_slice(&bytes[bytes.len() - behold..]);
+        } else {
+            let fra_hale = behold - bytes.len();
+            i.tail.drain(..i.tail.len() - fra_hale);
+            i.tail.extend_from_slice(bytes);
+        }
 
         if i.workspace_visible {
             // Du kigger på det: nyt output betyder at agenten arbejder igen, så
@@ -275,6 +309,32 @@ mod tests {
             prompt.poll_kind(1_001),
             AttentionKind::NeedsYou,
             "prompt vinder uden at vente paa stilhed"
+        );
+    }
+
+    /// `on_output` søger i to vinduer (chunket selv, og hale ++ chunkets
+    /// første `max_pattern_len-1` bytes) frem for i én sammensat buffer.
+    ///
+    /// Krydsnings-tilfældet er dækket ovenfor; DETTE er det andet tilfælde der
+    /// kan afsløre en forskel: et mønster som ligger HELT inde i den bevarede
+    /// hale. Det kan ske, fordi halen er lige så lang som det LÆNGSTE mønster
+    /// minus én — og et kortere mønster er der derfor plads til. Testen kigger
+    /// på den SYNLIGE gren, hvor `prompted = matchede` sættes forfra ved hvert
+    /// chunk: en implementation der kun søgte i chunket ville tabe flaget her,
+    /// og det ville først vise sig som en manglende prik efter et skift væk.
+    #[test]
+    fn moenster_der_kun_ligger_i_halen_taeller_stadig() {
+        const TO: &[&[u8]] = &[b"Do you want to proceed?", b"Do you want to make this edit"];
+        let a = CardAttention::new(TO);
+        a.on_reveal();
+        a.on_output(1_000, b"Do you want to proceed?");
+        // Chunk uden eget match; mønsteret findes nu kun i halen.
+        a.on_output(1_001, b"x");
+        a.on_conceal();
+        assert_eq!(
+            a.poll_kind(1_002),
+            AttentionKind::NeedsYou,
+            "prompt-viden fra halen skal baeres med over conceal-kanten"
         );
     }
 

@@ -122,9 +122,7 @@ pub fn read_active(global_base: &Path) -> Option<ActiveRequest> {
 }
 
 pub fn write_active(global_base: &Path, request: &ActiveRequest) -> Result<(), String> {
-    let mut body = serde_json::to_string_pretty(request).map_err(|e| e.to_string())?;
-    body.push('\n');
-    atomic::write(&active_path(global_base), body.as_bytes()).map_err(|e| e.to_string())?;
+    atomic::write_json_pretty(&active_path(global_base), request).map_err(|e| e.to_string())?;
     // Filen er autoritativ; eventet er kun en best-effort fast path. Det skal
     // derfor signaleres EFTER den atomiske skrivning, aldrig før.
     wake::notify_badge_refresh();
@@ -162,21 +160,25 @@ pub fn write_status(
     slug: &str,
     status: &WorkspaceStatus,
 ) -> Result<(), String> {
-    let mut body = serde_json::to_string_pretty(status).map_err(|e| e.to_string())?;
-    body.push('\n');
-    atomic::write(&status_path(global_base, slug), body.as_bytes()).map_err(|e| e.to_string())
+    atomic::write_json_pretty(&status_path(global_base, slug), status).map_err(|e| e.to_string())
+}
+
+/// Systemets ene ISO-8601-form: `YYYY-MM-DDTHH:MM:SS.mmmZ`.
+///
+/// Formatet er en KRYDS-PROCES-kontrakt, ikke kosmetik: `launch_deadline`
+/// sammenlignes som **streng** (`decide`s deadline-gren nedenfor), saa enhver
+/// skriver skal producere praecis denne bredde. Derfor staar literalen ét sted
+/// — et `%.6f` sneget ind i en kopi ville braekke sammenligningen tavst.
+fn fmt_iso_z(dt: chrono::DateTime<chrono::Utc>) -> String {
+    dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 pub fn now_iso_z() -> String {
-    chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
+    fmt_iso_z(chrono::Utc::now())
 }
 
 pub fn deadline_from_now() -> String {
-    (chrono::Utc::now() + chrono::Duration::seconds(LAUNCH_DEADLINE_SECS))
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
+    fmt_iso_z(chrono::Utc::now() + chrono::Duration::seconds(LAUNCH_DEADLINE_SECS))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -459,14 +461,32 @@ pub fn run_poller(
         let my_status = status_writer.snapshot();
 
         let other = active.as_ref().filter(|request| request.slug != me);
-        let target_status = other.and_then(|request| read_status(&global_base, &request.slug));
         let target_alive = other.is_some_and(|request| instance_alive(&global_base, &request.slug));
         let live_slugs = live_slugs(&global_base);
-        let any_visible = live_slugs.iter().any(|slug| {
-            if slug == &me {
-                my_status.visible
-            } else {
-                read_status(&global_base, slug).is_some_and(|status| status.visible)
+        // ÉT opslag pr. slug pr. tick. Targetets `status.json` blev tidligere
+        // aabnet og parset TO gange i samme tick — én gang som `target_status`
+        // og én gang inde i `any_visible`-loekken. Ved 5 Hz er det en fil-read
+        // + en serde-parse i sekundet pr. aabent workspace, uden at
+        // state-maskinen ser noget andet.
+        let live_statuses: Vec<Option<WorkspaceStatus>> = live_slugs
+            .iter()
+            .map(|slug| {
+                if slug == &me {
+                    Some(my_status.clone())
+                } else {
+                    read_status(&global_base, slug)
+                }
+            })
+            .collect();
+        let any_visible = live_statuses
+            .iter()
+            .any(|status| status.as_ref().is_some_and(|status| status.visible));
+        // Targetet behoever ikke vaere i `live_slugs` — en doed proces har
+        // stadig en fil — saa fald tilbage til en direkte laesning.
+        let target_status = other.and_then(|request| {
+            match live_slugs.iter().position(|slug| slug == &request.slug) {
+                Some(index) => live_statuses[index].clone(),
+                None => read_status(&global_base, &request.slug),
             }
         });
         let now = now_iso_z();
@@ -577,14 +597,10 @@ pub fn live_slugs(global_base: &Path) -> Vec<String> {
 /// mutexen i live efter at ejeren døde.
 #[cfg(windows)]
 pub fn instance_alive(_global_base: &Path, slug: &str) -> bool {
-    use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
 
-    let name: Vec<u16> = std::ffi::OsStr::new(&format!("Talminal-{slug}"))
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
+    let name = crate::instance::to_wide(&format!("Talminal-{slug}"));
     let handle = unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, name.as_ptr()) };
     if handle.is_null() {
         return false;

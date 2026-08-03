@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deferred, flushTimers } from "../testHelpers";
 import {
   REALTIME_INSTRUCTIONS,
   REALTIME_MODEL,
@@ -8,19 +9,7 @@ import {
   realtimeToolCallToIntent,
 } from "./realtime";
 
-async function flush() {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 type Listener = (event: Event | MessageEvent) => void;
 
@@ -130,10 +119,10 @@ async function startHarness(
   });
 
   const waking = session.wake({ apiAudio });
-  await flush();
+  await flushTimers();
   const socket = sockets[0];
   socket.open();
-  await flush();
+  await flushTimers();
   socket.message({
     type: "session.updated",
     session: { type: "realtime", model: REALTIME_MODEL, expires_at: 9_999_999_999 },
@@ -448,7 +437,7 @@ describe("persistent Realtime lifecycle", () => {
     h.socket.message({ type: "input_audio_buffer.committed", item_id: "item-1" });
     h.socket.message({ type: "response.created", response: { id: "resp-1" } });
     h.socket.message(functionCallResponse({ args: { card: 1 } }));
-    await flush();
+    await flushTimers();
     expect(h.dispatch).not.toHaveBeenCalled();
 
     h.socket.message({
@@ -457,7 +446,7 @@ describe("persistent Realtime lifecycle", () => {
       transcript: "Genstart kort et",
       usage: { total_tokens: 4 },
     });
-    await flush();
+    await flushTimers();
 
     expect(h.dispatch).toHaveBeenCalledTimes(1);
     expect(h.dispatch).toHaveBeenCalledWith(
@@ -503,7 +492,7 @@ describe("persistent Realtime lifecycle", () => {
         callId: "call-2",
       }),
     );
-    await flush();
+    await flushTimers();
 
     expect(h.dispatch).toHaveBeenCalledWith(
       { kind: "restart_card", card: 2 },
@@ -528,7 +517,7 @@ describe("persistent Realtime lifecycle", () => {
         callId: "call-all",
       }),
     );
-    await flush();
+    await flushTimers();
 
     expect(h.dispatch).toHaveBeenCalledWith(
       { kind: "close_cards", cards: [], all: true },
@@ -566,7 +555,7 @@ describe("persistent Realtime lifecycle", () => {
       }),
     );
     h.socket.message({ type: "error", error: { message: "socket failed" } });
-    await flush();
+    await flushTimers();
 
     expect(h.dispatch).not.toHaveBeenCalled();
     expect(h.errors).toEqual(expect.arrayContaining(["socket failed"]));
@@ -592,7 +581,7 @@ describe("persistent Realtime lifecycle", () => {
         callId: "call-conflict",
       }),
     );
-    await flush();
+    await flushTimers();
 
     expect(parsedSent(h.socket)).toContainEqual({
       type: "conversation.item.create",
@@ -632,7 +621,7 @@ describe("persistent Realtime lifecycle", () => {
         output: [],
       },
     });
-    await flush();
+    await flushTimers();
 
     expect(new Uint8Array(h.audio[0])).toEqual(new Uint8Array([1, 2]));
     expect(h.responseTexts).toContain("Kort tre er grønt");
@@ -649,7 +638,7 @@ describe("persistent Realtime lifecycle", () => {
       transcript: "Genstart kort et",
     });
     h.socket.message(functionCallResponse({ responseId: "resp-tool", args: { card: 1 } }));
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(0);
     expect(h.dispatch).toHaveBeenCalledTimes(1);
 
@@ -661,7 +650,7 @@ describe("persistent Realtime lifecycle", () => {
         output: [{ type: "message", content: [{ type: "output_text", text: "Genstartet" }] }],
       },
     });
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(1);
   });
 
@@ -682,7 +671,7 @@ describe("persistent Realtime lifecycle", () => {
         callId: "call-reject",
       }),
     );
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(0);
 
     h.socket.message({
@@ -693,7 +682,7 @@ describe("persistent Realtime lifecycle", () => {
         output: [{ type: "message", content: [{ type: "output_text", text: "Kan du præcisere?" }] }],
       },
     });
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(1);
   });
 
@@ -710,10 +699,10 @@ describe("persistent Realtime lifecycle", () => {
         output: [{ type: "message", content: [{ type: "output_text", text: "Klar" }] }],
       },
     });
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(0);
     drain.resolve();
-    await flush();
+    await flushTimers();
     expect(h.logicalTurnEnds).toHaveLength(1);
   });
 });

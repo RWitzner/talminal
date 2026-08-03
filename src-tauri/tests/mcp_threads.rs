@@ -4,8 +4,6 @@
 mod common;
 
 use serde_json::Value;
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use talminal_canvas_lib::mcp::{self, BrowserCardOps, BrowserCardRow, McpOps, OpenResult};
 use talminal_canvas_lib::threads::pair::{self, SpawnedCard, Spawner};
@@ -28,27 +26,10 @@ impl BrowserCardOps for NoBrowser {
     }
 }
 
-/// Raa HTTP, som husets mcp_server-test. `bearer` og `session` saettes
-/// uafhaengigt, saa forrangsreglerne kan paastaas.
+/// Parset svar. Selve request-bygningen bor i `common::mcp_post_raw` — den
+/// form ER serverens accepterede flade og maa kun findes ét sted.
 fn post(port: u16, body: &str, session: Option<&str>, bearer: Option<&str>) -> Value {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    let session_header = session
-        .map(|s| format!("x-talminal-session: {s}\r\n"))
-        .unwrap_or_default();
-    let auth_header = bearer
-        .map(|t| format!("Authorization: Bearer {t}\r\n"))
-        .unwrap_or_default();
-    let req = format!(
-        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
-         Accept: application/json, text/event-stream\r\n{session_header}{auth_header}\
-         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    stream.write_all(req.as_bytes()).expect("write");
-    let mut out = String::new();
-    stream.read_to_string(&mut out).expect("read");
-    let (_headers, body) = out.split_once("\r\n\r\n").expect("http boundary");
-    serde_json::from_str(body).expect("body is valid json")
+    common::body_json(&common::mcp_post_raw(port, body, session, bearer))
 }
 
 fn say_body() -> String {

@@ -252,8 +252,10 @@ impl Matcher {
         }
     }
 
-    fn finish_generation(&mut self) {
-        self.generation = self.generation.saturating_add(1);
+    /// Nulstiller ALT prompt-/echo-matchestof. Ét sted, fordi et nyt felt paa
+    /// `Matcher` ellers skal huskes i tre uafhaengige nulstillinger — og den
+    /// der glemmes lekker state ind i naeste generation.
+    fn clear_prompt_match(&mut self) {
         self.prompt_prefixes.fill(0);
         self.anchor_stage = 0;
         self.cursor_prefix = 0;
@@ -266,19 +268,15 @@ impl Matcher {
         self.echo_seen = false;
     }
 
+    fn finish_generation(&mut self) {
+        self.generation = self.generation.saturating_add(1);
+        self.clear_prompt_match();
+    }
+
     fn reset_input_match(&mut self) {
-        self.prompt_prefixes.fill(0);
-        self.anchor_stage = 0;
-        self.cursor_prefix = 0;
+        self.clear_prompt_match();
         self.row = 0;
         self.column = 0;
-        self.saw_prompt = false;
-        self.awaiting_text_redraw = false;
-        self.echo_pattern.clear();
-        self.echo_failure.clear();
-        self.echo_prefix = 0;
-        self.echo_escape = EchoEscape::Ground;
-        self.echo_seen = false;
     }
 }
 

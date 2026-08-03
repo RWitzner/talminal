@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatCard } from "./ChatCard";
 import type { ChatCardInfo } from "./types";
+import { deferred } from "./testHelpers";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock("@tauri-apps/api/event", () => ({
@@ -44,13 +45,6 @@ const openThread = {
   ],
 };
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 
 describe("ChatCard", () => {
   let host: HTMLDivElement;

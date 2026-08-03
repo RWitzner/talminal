@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { createPtt, type AudioCapture, type PttState } from "./ptt";
+import { deferred, flushTimers } from "../testHelpers";
 import {
   createOpenAiSttClient,
   STT_DOMAIN_PROMPT,
@@ -24,19 +25,7 @@ function createTestStt(
   });
 }
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
-async function flush() {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
 
 function makeCapture(): AudioCapture & { stop: ReturnType<typeof vi.fn> } {
   return {
@@ -103,7 +92,7 @@ describe("createOpenAiSttClient", () => {
     await expect(client.start()).rejects.toThrow("already started");
 
     secret.resolve({ value: "sk-test-key", expires_at: 123 });
-    await flush();
+    await flushTimers();
     expect(FakeWebSocket.instances).toHaveLength(1);
     FakeWebSocket.instances[0].open();
     await expect(firstStart).resolves.toBeUndefined();
@@ -115,7 +104,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances[0];
     expect(invoke).toHaveBeenCalledWith("mint_transcription_secret");
     expect(ws.url).toBe("wss://api.openai.com/v1/realtime?intent=transcription");
@@ -150,7 +139,7 @@ describe("createOpenAiSttClient", () => {
     client.onPartial((text) => partials.push(text));
 
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances[0];
     ws.open();
     await started;
@@ -236,7 +225,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances[0];
     ws.open();
     await started;
@@ -254,7 +243,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const started = client.start();
-    await flush();
+    await flushTimers();
     FakeWebSocket.instances[0].disconnect();
 
     await expect(started).rejects.toThrow("closed before opening");
@@ -266,13 +255,13 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     FakeWebSocket.instances[0].open();
     await firstStart;
     FakeWebSocket.instances[0].disconnect();
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     expect(FakeWebSocket.instances).toHaveLength(2);
     FakeWebSocket.instances[1].open();
     await expect(secondStart).resolves.toBeUndefined();
@@ -284,7 +273,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     const first = FakeWebSocket.instances[0];
     first.open();
     await firstStart;
@@ -296,7 +285,7 @@ describe("createOpenAiSttClient", () => {
     await firstStop;
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     const second = FakeWebSocket.instances[1];
     second.open();
     await secondStart;
@@ -317,7 +306,7 @@ describe("createOpenAiSttClient", () => {
     client.onPartial((text) => partials.push(text));
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     const first = FakeWebSocket.instances[0];
     first.open();
     await firstStart;
@@ -329,7 +318,7 @@ describe("createOpenAiSttClient", () => {
     await firstStop;
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     const second = FakeWebSocket.instances[1];
     second.open();
     await secondStart;
@@ -356,7 +345,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     const first = FakeWebSocket.instances[0];
     first.open();
     await firstStart;
@@ -368,7 +357,7 @@ describe("createOpenAiSttClient", () => {
     await firstStop;
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     const second = FakeWebSocket.instances[1];
     second.open();
     await secondStart;
@@ -391,7 +380,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     const first = FakeWebSocket.instances[0];
     first.open();
     await firstStart;
@@ -400,7 +389,7 @@ describe("createOpenAiSttClient", () => {
     await expect(firstStop).rejects.toThrow("transient");
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     expect(FakeWebSocket.instances).toHaveLength(2);
     FakeWebSocket.instances[1].open();
     await expect(secondStart).resolves.toBeUndefined();
@@ -412,7 +401,7 @@ describe("createOpenAiSttClient", () => {
     const client = createTestStt();
 
     const firstStart = client.start();
-    await flush();
+    await flushTimers();
     const first = FakeWebSocket.instances[0];
     first.open();
     await firstStart;
@@ -420,7 +409,7 @@ describe("createOpenAiSttClient", () => {
     await expect(client.stop()).rejects.toThrow();
 
     const secondStart = client.start();
-    await flush();
+    await flushTimers();
     expect(FakeWebSocket.instances).toHaveLength(2);
     FakeWebSocket.instances[1].open();
     await expect(secondStart).resolves.toBeUndefined();
@@ -440,7 +429,7 @@ describe("STT configuration", () => {
     );
     const client = createTestStt({ mintSecret, createSocket });
     const started = client.start();
-    await flush();
+    await flushTimers();
     expect(mintSecret).toHaveBeenCalledTimes(1);
     expect(invoke).not.toHaveBeenCalled();
     expect(createSocket).toHaveBeenCalledWith(
@@ -460,7 +449,7 @@ describe("STT configuration", () => {
     });
 
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances[0];
     ws.open();
     await started;
@@ -494,7 +483,7 @@ describe("STT configuration", () => {
       mintSecret: async () => ({ value: "ek-test", expires_at: 0 }),
     });
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances.at(-1)!;
     ws.open();
     await started;
@@ -512,7 +501,7 @@ describe("STT configuration", () => {
       mintSecret: async () => ({ value: "ek-test", expires_at: 0 }),
     });
     const started = client.start();
-    await flush();
+    await flushTimers();
     const ws = FakeWebSocket.instances.at(-1)!;
     ws.open();
     await started;

@@ -23,20 +23,9 @@ import {
   type SessionToggleState,
 } from "./ptt";
 import { type SttClient } from "./stt";
+import { deferred, flushTimers } from "../testHelpers";
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
-async function flush() {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
 
 function makeStt(overrides: Partial<SttClient> = {}): SttClient {
   return {
@@ -76,12 +65,12 @@ describe("createPtt", () => {
 
     h.ptt.press();
     expect(h.states).toEqual(["listening"]);
-    await flush();
+    await flushTimers();
     expect(h.startCapture).toHaveBeenCalledTimes(1);
 
     h.ptt.release();
     expect(h.states).toEqual(["listening", "finalizing"]);
-    await flush();
+    await flushTimers();
 
     expect(h.capture.stop).toHaveBeenCalledTimes(1);
     expect(h.stt.stop).toHaveBeenCalledTimes(1);
@@ -102,7 +91,7 @@ describe("createPtt", () => {
     const h = makeHarness(stt);
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
 
     expect(h.startCapture).toHaveBeenCalledTimes(1);
     expect(h.capture.stop).toHaveBeenCalledTimes(1);
@@ -121,9 +110,9 @@ describe("createPtt", () => {
     const h = makeHarness(stt);
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.release();
-    await flush();
+    await flushTimers();
 
     expect(h.finals).toEqual([]);
     expect(h.errors.map((error) => error.message)).toEqual(["stop failed"]);
@@ -137,7 +126,7 @@ describe("createPtt", () => {
 
     h.ptt.press();
     h.ptt.press();
-    await flush();
+    await flushTimers();
     expect(stt.start).toHaveBeenCalledTimes(1);
 
     h.ptt.release();
@@ -146,7 +135,7 @@ describe("createPtt", () => {
     expect(stt.start).toHaveBeenCalledTimes(1);
 
     stop.resolve("færdig");
-    await flush();
+    await flushTimers();
     expect(h.finals).toEqual(["færdig"]);
     expect(h.states.at(-1)).toBe("idle");
   });
@@ -167,12 +156,12 @@ describe("createPtt", () => {
     });
 
     ptt.press();
-    await flush();
+    await flushTimers();
     emit(new Uint8Array([1, 2]).buffer);
     expect(stt.pushAudio).not.toHaveBeenCalled();
 
     start.resolve();
-    await flush();
+    await flushTimers();
     expect(stt.pushAudio).toHaveBeenCalledWith(new Uint8Array([1, 2]).buffer);
     expect(states).toEqual(["listening"]);
   });
@@ -187,7 +176,7 @@ describe("createPtt", () => {
     expect(h.states).toEqual(["listening", "finalizing"]);
 
     start.resolve();
-    await flush();
+    await flushTimers();
 
     expect(h.startCapture).toHaveBeenCalledTimes(1);
     expect(h.capture.stop).toHaveBeenCalledTimes(1);
@@ -212,7 +201,7 @@ describe("createPtt", () => {
     });
 
     ptt.press();
-    await flush();
+    await flushTimers();
 
     expect(stt.stop).toHaveBeenCalledTimes(1);
     expect(finals).toEqual([]);
@@ -243,9 +232,9 @@ describe("createPtt", () => {
     });
 
     ptt.press();
-    await flush();
+    await flushTimers();
     emit(new Uint8Array([1]).buffer);
-    await flush();
+    await flushTimers();
 
     expect(capture.stop).toHaveBeenCalledTimes(1);
     expect(stt.stop).toHaveBeenCalledTimes(1);
@@ -260,9 +249,9 @@ describe("createPtt", () => {
     const h = makeHarness(makeStt(), capture);
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.release();
-    await flush();
+    await flushTimers();
 
     expect(h.stt.stop).toHaveBeenCalledTimes(1);
     expect(h.stt.abort).not.toHaveBeenCalled();
@@ -284,7 +273,7 @@ describe("createPtt", () => {
     const h = makeHarness(stt, capture);
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
 
     expect(h.finals).toEqual([]);
     expect(h.errors).toHaveLength(1);
@@ -297,9 +286,9 @@ describe("createPtt", () => {
     const h = makeHarness();
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.cancel();
-    await flush();
+    await flushTimers();
 
     expect(h.capture.stop).toHaveBeenCalledTimes(1);
     expect(h.stt.abort).toHaveBeenCalledTimes(1);
@@ -313,13 +302,13 @@ describe("createPtt", () => {
     const h = makeHarness(makeStt({ stop: vi.fn(() => stop.promise) }));
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.release();
     h.ptt.cancel();
     expect(h.states.at(-1)).toBe("idle");
 
     stop.resolve("for sent");
-    await flush();
+    await flushTimers();
     expect(h.finals).toEqual([]);
     expect(h.states.at(-1)).toBe("idle");
   });
@@ -328,10 +317,10 @@ describe("createPtt", () => {
     const h = makeHarness();
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.cancel();
     h.ptt.cancel();
-    await flush();
+    await flushTimers();
 
     expect(h.capture.stop).toHaveBeenCalledTimes(1);
     expect(h.stt.abort).toHaveBeenCalledTimes(1);
@@ -343,13 +332,13 @@ describe("createPtt", () => {
     const h = makeHarness();
 
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.cancel();
-    await flush();
+    await flushTimers();
     h.ptt.press();
-    await flush();
+    await flushTimers();
     h.ptt.release();
-    await flush();
+    await flushTimers();
 
     expect(h.stt.start).toHaveBeenCalledTimes(2);
     expect(h.finals).toEqual(["luk kort tre"]);
@@ -785,7 +774,7 @@ describe("session-toggle", () => {
     await toggle.toggle();
     toggle.notifyBlur();
     toggle.notifyTurnDone();
-    await flush();
+    await flushTimers();
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(toggle.state()).toBe("asleep");
   });
@@ -824,7 +813,7 @@ describe("session-toggle", () => {
     toggle.notifyBlur();
     wakeGate.resolve();
     await waking;
-    await flush();
+    await flushTimers();
     expect(startCapture).not.toHaveBeenCalled();
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(toggle.state()).toBe("asleep");
@@ -890,7 +879,7 @@ describe("session-toggle", () => {
     toggle.notifyBlur();
     await toggle.toggle();
     toggle.notifyTurnDone();
-    await flush();
+    await flushTimers();
     expect(sleep).not.toHaveBeenCalled();
     expect(toggle.state()).toBe("awake");
   });
@@ -947,7 +936,7 @@ describe("session-toggle", () => {
     toggle.notifyBlur();
     captureGate.resolve();
     await resuming;
-    await flush();
+    await flushTimers();
     expect(stopCapture).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledTimes(1);
     expect(toggle.state()).toBe("asleep");

@@ -19,7 +19,6 @@
 //!   er lille, og interleaving med create/close-persist undgaas).
 
 use std::fs;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread;
@@ -182,55 +181,65 @@ pub fn normalize_settings(mut s: Settings) -> Settings {
     // whitespacen naaede hele vejen til `profiles::profile(" codex ")` => None
     // => "unknown profile: ", som braekker HVER kortoprettelse uden eksplicit
     // profil (create_card_persisted's utrimmede unwrap_or_else-gren).
-    let trimmed = s.default_agent.trim().to_string();
-    s.default_agent = if AGENT_SLUGS.contains(&trimmed.as_str()) {
-        trimmed
-    } else {
-        eprintln!(
-            "[canvas] settings.json default_agent={:?} er ukendt — falder tilbage til \"claude\"",
-            s.default_agent
-        );
-        default_agent()
-    };
+    s.default_agent = normalized_slug(
+        "default_agent",
+        &s.default_agent,
+        true,
+        |v| AGENT_SLUGS.contains(&v),
+        default_agent,
+    );
     // Realtime-motoren forlod appen (spec 2026-07-28 §0). En eksisterende
     // settings.json med "realtime" maa ikke braekke opstarten, saa den
-    // normaliseres stille til den eneste tilbagevaerende motor.
-    let engine = s.voice_engine.trim().to_string();
-    s.voice_engine = if engine == "pipeline" {
-        engine
-    } else {
-        if !engine.is_empty() {
-            eprintln!(
-                "[canvas] settings.json voice_engine={:?} er ikke laengere en mulighed — bruger \"pipeline\"",
-                s.voice_engine
-            );
-        }
-        default_voice_engine()
-    };
-    let trimmed = s.stt_provider.trim().to_string();
-    s.stt_provider = if crate::providers::stt_route(&trimmed).is_some() {
-        trimmed
-    } else {
-        eprintln!(
-            "[canvas] settings.json stt_provider={:?} er ukendt — falder tilbage til {:?}",
-            s.stt_provider,
-            crate::providers::DEFAULT_STT_SLUG
-        );
-        default_stt_provider()
-    };
-
-    let trimmed = s.routing_provider.trim().to_string();
-    s.routing_provider = if crate::providers::router_route(&trimmed).is_some() {
-        trimmed
-    } else {
-        eprintln!(
-            "[canvas] settings.json routing_provider={:?} er ukendt — falder tilbage til {:?}",
-            s.routing_provider,
-            crate::providers::DEFAULT_ROUTER_SLUG
-        );
-        default_routing_provider()
-    };
+    // normaliseres stille til den eneste tilbagevaerende motor. TOM vaerdi er
+    // her ikke en brugerfejl men et felt der aldrig blev sat — derfor tavs.
+    s.voice_engine = normalized_slug(
+        "voice_engine",
+        &s.voice_engine,
+        false,
+        |v| v == "pipeline",
+        default_voice_engine,
+    );
+    s.stt_provider = normalized_slug(
+        "stt_provider",
+        &s.stt_provider,
+        true,
+        |v| crate::providers::stt_route(v).is_some(),
+        default_stt_provider,
+    );
+    s.routing_provider = normalized_slug(
+        "routing_provider",
+        &s.routing_provider,
+        true,
+        |v| crate::providers::router_route(v).is_some(),
+        default_routing_provider,
+    );
     s
+}
+
+/// Én tolerant slug-normalisering: trim, valider, ellers fald tilbage til
+/// `Settings::default()`s vaerdi med én advarsel.
+///
+/// De fire felter havde hver sin kopi af den samme fire-linjers form, og
+/// advarslerne var allerede drevet fra hinanden i ordlyd. `fallback` er
+/// feltets egen `default_*`-funktion, saa defaulten stadig kun findes ét sted.
+fn normalized_slug(
+    field: &str,
+    value: &str,
+    warn_on_empty: bool,
+    valid: impl Fn(&str) -> bool,
+    fallback: fn() -> String,
+) -> String {
+    let trimmed = value.trim();
+    if valid(trimmed) {
+        return trimmed.to_string();
+    }
+    let fallback = fallback();
+    if warn_on_empty || !trimmed.is_empty() {
+        eprintln!(
+            "[canvas] settings.json {field}={value:?} er ukendt — falder tilbage til {fallback:?}"
+        );
+    }
+    fallback
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -359,21 +368,11 @@ pub fn load_settings_checked() -> (Settings, Option<String>) {
 /// Atomisk skrivning via T1's delte `crate::atomic::write` (unik temp + rename).
 pub fn save_settings(s: &Settings) -> Result<(), String> {
     let path = settings_path();
-    let mut body =
-        serde_json::to_string_pretty(s).map_err(|e| format!("settings serialize failed: {e}"))?;
-    body.push('\n');
-    crate::atomic::write(&path, body.as_bytes()).map_err(|e| format!("settings save failed: {e}"))
+    crate::atomic::write_json_pretty(&path, s).map_err(|e| format!("settings save failed: {e}"))
 }
 
 fn workspace_path() -> PathBuf {
     cards::talminal_base().join("workspace.json")
-}
-
-/// Samme tidsformat som resten af systemet: YYYY-MM-DDTHH:MM:SS.mmmZ.
-fn now_iso_z() -> String {
-    chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
 }
 
 fn lock_state() -> Result<MutexGuard<'static, WsState>, String> {
@@ -420,31 +419,12 @@ fn flush_after_debounce() {
 // Fil-IO (path-parameteriseret => testbar uden env/registry)
 // ---------------------------------------------------------------------------
 
-fn tmp_path(path: &Path) -> PathBuf {
-    let mut os = path.as_os_str().to_os_string();
-    os.push(".tmp");
-    PathBuf::from(os)
-}
-
-/// Atomisk skrivning (tmp+rename, samme moenster som signals.rs): en crash
-/// mellem tmp-write og rename efterlader den gamle fil intakt, og en
-/// efterladt tmp-fil overskrives bare ved naeste save (MOVEFILE_REPLACE_EXISTING).
+/// Atomisk skrivning via den delte `crate::atomic::write`: en crash mellem
+/// tmp-write og rename efterlader den gamle fil intakt, og en efterladt tmp-fil
+/// blokerer ikke — writeren tager bare naeste nonce.
 pub fn save_workspace_file(path: &Path, file: &WorkspaceFile) -> Result<(), String> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("workspace dir create failed: {e}"))?;
-    }
     // Deterministisk serialisering (fast feltorden) => roundtrip er byte-stabil.
-    let mut body = serde_json::to_string_pretty(file)
-        .map_err(|e| format!("workspace serialize failed: {e}"))?;
-    body.push('\n');
-    let tmp = tmp_path(path);
-    let mut f = fs::File::create(&tmp).map_err(|e| format!("workspace tmp create failed: {e}"))?;
-    f.write_all(body.as_bytes())
-        .map_err(|e| format!("workspace tmp write failed: {e}"))?;
-    f.sync_all()
-        .map_err(|e| format!("workspace tmp sync failed: {e}"))?;
-    drop(f);
-    fs::rename(&tmp, path).map_err(|e| format!("workspace rename failed: {e}"))
+    crate::atomic::write_json_pretty(path, file).map_err(|e| format!("workspace save failed: {e}"))
 }
 
 /// `Ok(None)` = filen findes ikke (import-grenen). `Err` = defekt fil — den
@@ -870,7 +850,7 @@ pub fn touch_card_activity(name: &str) {
     let Some(card) = st.file.cards.iter_mut().find(|c| c.name == name) else {
         return;
     };
-    card.last_active_at = Some(now_iso_z());
+    card.last_active_at = Some(crate::workspaces::now_iso_z());
     mark_dirty(&mut st);
 }
 

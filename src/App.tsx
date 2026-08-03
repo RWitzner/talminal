@@ -60,6 +60,7 @@ import {
 import { createOpenAiSttClient, STT_DOMAIN_PROMPT } from "./voice/stt";
 import { loadReplyClips } from "./voice/clipAssets";
 import { createClipTts } from "./voice/clipTts";
+import { DEFAULT_PTT_HOTKEY as DEFAULT_VOICE_HOTKEY } from "./hotkeyDefaults";
 import {
   closeTraceFor,
   flushPerfTrace,
@@ -77,7 +78,6 @@ import {
 // modul-request og flyttede mount'et en microtask senere end orben, der maaler
 // op imod det.
 
-const DEFAULT_VOICE_HOTKEY = "CmdOrCtrl+Shift+Space";
 const VITE_ENV = (import.meta as ImportMeta & {
   env?: Record<string, string | undefined>;
 }).env;

@@ -38,8 +38,16 @@
 //! FANGER den (mappen er ikke undtaget), men raadet "tag serial()" hjaelper
 //! ikke dér — brug `reset_capture_at`/`append_capture_at` med eksplicit sti.
 
+// Modulet kompileres ind i HVER testbinary der siger `mod common;`, og hver
+// binary bruger sin egen delmaengde — pty-suiterne roerer aldrig `serial()`,
+// threads-suiterne roerer aldrig ANSI-stripperen. Uden dette ville hver binary
+// faa dead_code-advarsler for alt den ikke bruger, og CI koerer clippy med
+// `-D warnings`. Derfor ét allow her frem for et pr. funktion.
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
 fn serial_lock() -> &'static Mutex<()> {
     static M: OnceLock<Mutex<()>> = OnceLock::new();
@@ -104,9 +112,181 @@ pub fn serial() -> MutexGuard<'static, ()> {
 /// Bruges kun af de tests der har brug for en GARANTERET TOM mappe (fx
 /// arkiv-scanninger der taeller filer). Alle andre er daekket af `serial()`
 /// og behoever den ikke.
-#[allow(dead_code)]
 pub fn temp_home() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("tempdir");
     std::env::set_var("TALMINAL_HOME", dir.path());
     dir
+}
+
+// ---------------------------------------------------------------------------
+// ConPTY-harnessen (delt af pty_host.rs og profiles.rs)
+//
+// De to suiter havde hver sin BYTE-IDENTISKE kopi af `strip_ansi` og dens
+// foelgesvende. Begrundelsen stod skrevet i profiles.rs — "test-binaries kan
+// ikke dele kode uden tests/common/, som er uden for lease" — og den er ikke
+// sand laengere: denne fil findes og inkluderes allerede af 26 testfiler.
+//
+// Det er ikke en kosmetisk dublering. `strip_ansi` er den maalestok begge
+// PTY-suiter bruger til at afgoere om "outputtet indeholdt X"; en rettelse i
+// den ene kopis OSC-/DCS-grene ville efterlade den anden suite blind.
+// ---------------------------------------------------------------------------
+
+pub fn cmd_exe() -> String {
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+    format!(r"{root}\System32\cmd.exe")
+}
+
+// ---------------------------------------------------------------------------
+// Raa MCP-HTTP-klient (delt af mcp_server.rs og mcp_threads.rs)
+//
+// Request-formen ER serverens accepterede flade: `mcp.rs` dokumenterer at
+// `Content-Length`-haandteringen er BEVIDST striks. Den strikshed blev
+// tidligere asserteret mod to uafhaengigt vedligeholdte request-byggere.
+// ---------------------------------------------------------------------------
+
+/// Sender én `POST /mcp` og giver det RAA svar (headers inkl.), saa en test
+/// kan paastaa noget om statuslinjen. `session` og `bearer` saettes uafhaengigt,
+/// saa forrangsreglerne mellem de to identitets-kanaler kan proeves.
+pub fn mcp_post_raw(port: u16, body: &str, session: Option<&str>, bearer: Option<&str>) -> String {
+    use std::io::{Read as _, Write as _};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    let session_header = session
+        .map(|s| format!("x-talminal-session: {s}\r\n"))
+        .unwrap_or_default();
+    let auth_header = bearer
+        .map(|t| format!("Authorization: Bearer {t}\r\n"))
+        .unwrap_or_default();
+    let req = format!(
+        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n\
+         Accept: application/json, text/event-stream\r\n{session_header}{auth_header}\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(req.as_bytes()).expect("write");
+    let mut out = String::new();
+    stream.read_to_string(&mut out).expect("read");
+    out
+}
+
+/// Deler et raat HTTP-svar ved header/body-graensen og parser bodyen som JSON.
+pub fn body_json(raw: &str) -> serde_json::Value {
+    let (_headers, body) = raw
+        .split_once("\r\n\r\n")
+        .expect("http response has a header/body separator");
+    serde_json::from_str(body).expect("body is valid json")
+}
+
+/// Er DENNE proces den navngivne worker-child? `TALMINAL_WORKER` er
+/// foraeldre↔barn-kontrakten for de tests der skal koere i en frisk proces
+/// (proces-global tilstand kan ikke nulstilles i traaden). Navnet er en wire —
+/// derfor ét sted, ikke tre.
+pub fn is_worker(name: &str) -> bool {
+    std::env::var("TALMINAL_WORKER").as_deref() == Ok(name)
+}
+
+/// Styrbart ur til traad-dispatchens tests. Laa i tre byte-identiske kopier
+/// (`threads_dispatch`, `threads_heartbeat`, `threads_sweep`) — en aendring i
+/// `dispatch::Clock` braekker ellers tre haandskrevne doubler.
+pub struct FakeClock(pub Arc<Mutex<u64>>);
+
+impl talminal_canvas_lib::threads::dispatch::Clock for FakeClock {
+    fn now_ms(&self) -> u64 {
+        *self.0.lock().unwrap()
+    }
+}
+
+/// ANSI-stripper fra spike-harnessen (kanonisk moenster) — sentinel-soegning
+/// maa ikke forstyrres af escape-sekvenser i ConPTY-outputtet.
+pub fn strip_ansi(bytes: &[u8]) -> String {
+    #[derive(PartialEq)]
+    enum St {
+        Normal,
+        Esc,
+        Csi,
+        Osc,
+        OscEsc,
+        Str, // DCS/SOS/PM/APC — til ESC \
+        StrEsc,
+        EscInter, // ESC ( ) * + — én byte mere
+    }
+    let mut st = St::Normal;
+    let mut out = Vec::with_capacity(bytes.len());
+    for &b in bytes {
+        match st {
+            St::Normal => {
+                if b == 0x1B {
+                    st = St::Esc;
+                } else if b == b'\r' || b == b'\n' || b == b'\t' || b >= 0x20 {
+                    out.push(b);
+                }
+            }
+            St::Esc => {
+                st = match b {
+                    b'[' => St::Csi,
+                    b']' => St::Osc,
+                    b'P' | b'X' | b'^' | b'_' => St::Str,
+                    b'(' | b')' | b'*' | b'+' => St::EscInter,
+                    _ => St::Normal,
+                };
+            }
+            St::Csi => {
+                if (0x40..=0x7E).contains(&b) {
+                    st = St::Normal;
+                }
+            }
+            St::Osc => {
+                if b == 0x07 {
+                    st = St::Normal;
+                } else if b == 0x1B {
+                    st = St::OscEsc;
+                }
+            }
+            St::OscEsc => {
+                st = if b == b'\\' { St::Normal } else { St::Osc };
+            }
+            St::Str => {
+                if b == 0x1B {
+                    st = St::StrEsc;
+                }
+            }
+            St::StrEsc => {
+                st = if b == b'\\' { St::Normal } else { St::Str };
+            }
+            St::EscInter => st = St::Normal,
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+pub fn stripped(buf: &Arc<Mutex<Vec<u8>>>) -> String {
+    strip_ansi(&buf.lock().unwrap())
+}
+
+pub fn wait_for(buf: &Arc<Mutex<Vec<u8>>>, needle: &str, timeout: Duration) -> bool {
+    let start = Instant::now();
+    loop {
+        if stripped(buf).contains(needle) {
+            return true;
+        }
+        if start.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Venter paa child-exit og giver exit-koden. De to suiter havde hver sin
+/// variant — `Option<u32>` og en `bool` — af den samme loekke; den rigere form
+/// er valgt, saa en test der VIL se koden ikke skal skrive loekken igen.
+pub fn wait_exit(host: &talminal_canvas_lib::pty::PtyHost, timeout: Duration) -> Option<u32> {
+    let start = Instant::now();
+    loop {
+        if let Some(code) = host.try_exit_status() {
+            return Some(code);
+        }
+        if start.elapsed() >= timeout {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }

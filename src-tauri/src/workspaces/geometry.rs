@@ -195,9 +195,7 @@ impl GeometryWriter {
 }
 
 fn write_file(global_base: &Path, placement: &WindowPlacement) -> Result<(), String> {
-    let mut body = serde_json::to_string_pretty(placement).map_err(|error| error.to_string())?;
-    body.push('\n');
-    atomic::write(&path(global_base), body.as_bytes()).map_err(|error| error.to_string())
+    atomic::write_json_pretty(&path(global_base), placement).map_err(|error| error.to_string())
 }
 
 /// Står vinduet allerede sådan som en anvendelse ville sætte det?

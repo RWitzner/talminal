@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { DispatchResult, VoiceDispatcher } from "./dispatch";
+import { asError } from "./errors";
 import type { DryRunResult } from "./dryRun";
 import type { VoiceIntent } from "./intents";
 import { createPtt, startBrowserCapture, type StartAudioCapture } from "./ptt";
@@ -43,10 +44,6 @@ type ToolTurn = {
   }>;
   command_count?: number;
 };
-
-function asError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
 
 function intentArguments(intent: VoiceIntent): Record<string, unknown> {
   switch (intent.kind) {

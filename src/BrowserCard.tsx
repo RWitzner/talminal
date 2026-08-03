@@ -15,6 +15,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { BrowserCardInfo } from "./types";
+import { CARD_HEADER, CARD_NUMBER_BADGE, CARD_SHELL } from "./cardChrome";
 import { cardLabel } from "./cardLabel";
 import {
   flushPerfTrace,
@@ -237,42 +238,9 @@ export function BrowserCard({
 }
 
 const styles: Record<string, CSSProperties> = {
-  card: {
-    border: "none",
-    borderRadius: 13,
-    background:
-      "linear-gradient(145deg, rgba(13, 22, 34, 0.98), rgba(2, 7, 14, 0.99))",
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    overflow: "hidden",
-    boxShadow: "inset 0 1px 0 rgba(229, 244, 255, 0.1)",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    minHeight: 35,
-    padding: "0 8px 0 9px",
-    borderBottom: "1px solid rgba(207, 232, 255, 0.08)",
-    background:
-      "linear-gradient(180deg, rgba(31, 42, 56, 0.98), rgba(12, 18, 27, 0.98))",
-    fontSize: 12,
-  },
-  numberBadge: {
-    minWidth: 19,
-    boxSizing: "border-box",
-    padding: "1px 5px",
-    border: "1px solid rgba(187, 211, 233, 0.14)",
-    borderRadius: 6,
-    background: "rgba(112, 137, 163, 0.15)",
-    color: "#9eafc1",
-    textAlign: "center",
-    fontSize: 10,
-    fontWeight: 700,
-    fontVariantNumeric: "tabular-nums",
-    flex: "0 0 auto",
-  },
+  card: { ...CARD_SHELL, height: "100%" },
+  header: { ...CARD_HEADER, fontSize: 12 },
+  numberBadge: { ...CARD_NUMBER_BADGE, flex: "0 0 auto" },
   openedBy: {
     padding: "1px 6px",
     border: "1px solid rgba(116, 192, 255, 0.24)",

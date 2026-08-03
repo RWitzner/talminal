@@ -21,6 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatCardInfo } from "./types";
+import { CARD_HEADER, CARD_NUMBER_BADGE, CARD_SHELL } from "./cardChrome";
+import { cardLabel } from "./cardLabel";
 import {
   assignAgentSlots,
   formatClock,
@@ -62,11 +64,14 @@ const OWNER_ACCENT = "#dfe9f4";
  *  allerede stod ved loftet da kortet blev monteret). Spejler `MAX_HOPS`. */
 const DEFAULT_HOP_CAP = 20;
 
-/** Tekstlig afsender-label. Farve alene er ikke en label (spec §6). */
+/** Tekstlig afsender-label. Farve alene er ikke en label (spec §6).
+ *  Selve "Kort N"-oversaettelsen kommer fra `cardLabel` — den regel bor ét
+ *  sted. En lokal `replace(/^card-/, "")` her gav et ANDET svar for
+ *  toml-seedede kort: "Kort master (agent)" i stedet for "master (agent)". */
 function senderLabel(m: ThreadMessage): string {
   if (m.from_kind === "system") return "System";
   if (m.from_kind === "human") return "Dig (menneske)";
-  return `Kort ${m.from_card.replace(/^card-/, "")} (agent)`;
+  return `${cardLabel(m.from_card)} (agent)`;
 }
 
 /** `delegation` aabner en forpligtelse og `answer` lukker den — de to er
@@ -494,41 +499,17 @@ const chatCss = `
 
 const styles: Record<string, CSSProperties> = {
   root: {
-    display: "flex",
-    flexDirection: "column",
+    ...CARD_SHELL,
     height: "100%",
     minHeight: 0,
-    borderRadius: 13,
-    overflow: "hidden",
-    background:
-      "linear-gradient(145deg, rgba(13, 22, 34, 0.98), rgba(2, 7, 14, 0.99))",
-    boxShadow: "inset 0 1px 0 rgba(229, 244, 255, 0.1)",
+    // Chat-kortet er ren tekst — farve og grundstoerrelse saettes paa roden og
+    // arves ned, hvor de to andre korttyper saetter dem pr. element.
     color: "#cfe0f2",
     fontSize: 12,
   },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    minHeight: 35,
-    padding: "0 8px 0 9px",
-    overflow: "hidden",
-    borderBottom: "1px solid rgba(207, 232, 255, 0.08)",
-    background:
-      "linear-gradient(180deg, rgba(31, 42, 56, 0.98), rgba(12, 18, 27, 0.98))",
-  },
+  header: { ...CARD_HEADER, overflow: "hidden" },
   badge: {
-    minWidth: 19,
-    boxSizing: "border-box",
-    padding: "1px 5px",
-    border: "1px solid rgba(187, 211, 233, 0.14)",
-    borderRadius: 6,
-    background: "rgba(112, 137, 163, 0.15)",
-    color: "#9eafc1",
-    textAlign: "center",
-    fontSize: 10,
-    fontWeight: 700,
-    fontVariantNumeric: "tabular-nums",
+    ...CARD_NUMBER_BADGE,
     flex: "0 0 auto",
   },
   purpose: {

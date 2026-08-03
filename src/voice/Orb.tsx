@@ -27,6 +27,8 @@ export function Orb(props: {
   const shellRef = useRef<HTMLSpanElement | null>(null);
   const flashRef = useRef<OrbFlashState>({ flashUntil: null });
   const levelRef = useRef(0);
+  /** Sidst skrevne `--lvl`, saa en uaendret frame ikke roerer CSSOM. */
+  const writtenLevelRef = useRef<string | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [attr, setAttr] = useState<string>(() =>
@@ -55,17 +57,29 @@ export function Orb(props: {
         now,
       );
       setAttr((current) => (current === nextAttr ? current : nextAttr));
+      // Kilderne hentes KUN i den tilstand der laeser dem: `orbLevelTarget`
+      // roerer `mic` i "listening" og `outputLevel` i "speaking" og smider
+      // resten vaek. `getOutputLevel()` er en FFT-laesning plus en
+      // 1024-samples RMS-loekke — den koerte 60 gange i sekundet resten af
+      // sessionen efter det foerste afspillede klip, for et tal ingen laeste.
       const target = orbLevelTarget({
         attr: nextAttr,
         now,
-        mic: propsRef.current.getMicLevel(),
-        outputLevel: propsRef.current.getOutputLevel(),
+        mic:
+          nextAttr === "listening"
+            ? propsRef.current.getMicLevel()
+            : { level: 0, at: 0 },
+        outputLevel:
+          nextAttr === "speaking" ? propsRef.current.getOutputLevel() : 0,
       });
       levelRef.current += (target - levelRef.current) * ORB_LEVEL_LERP;
-      shellRef.current?.style.setProperty(
-        "--lvl",
-        levelRef.current.toFixed(3),
-      );
+      // CSSOM-skrivning er ikke gratis; springes over naar den afrundede
+      // vaerdi ikke har flyttet sig siden sidste frame.
+      const next = levelRef.current.toFixed(3);
+      if (next !== writtenLevelRef.current) {
+        writtenLevelRef.current = next;
+        shellRef.current?.style.setProperty("--lvl", next);
+      }
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);

@@ -3,8 +3,6 @@
 //! talminal-MCP'en (Task 4, session-header-scopet) og sit scopes
 //! Playwright-CDP-endpoint (Task 3, pinnet version). Ren fil-IO — ingen
 //! tauri-typer; `spawn_into` (main.rs) er den eneste kalder.
-use std::fs;
-use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
@@ -43,8 +41,7 @@ pub fn launch_args(config_path: &Path) -> Vec<String> {
 
 /// Skriver `{worker-mcp-dir}/{card_name}.json`. Idempotent/overskrivende —
 /// et respawn med samme porte OG samme token giver byte-identisk indhold (spec
-/// §5-uforanderligheden). Atomisk skrivning (tmp+rename, samme moenster som
-/// workspace.rs' `save_workspace_file`).
+/// §5-uforanderligheden). Atomisk skrivning via den delte `crate::atomic::write`.
 pub fn write_config(
     card_name: &str,
     mcp_port: u16,
@@ -76,10 +73,8 @@ pub fn write_config(
         }
     });
     let path = worker_mcp_dir().join(format!("{card_name}.json"));
-    let mut body = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("worker-mcp serialize failed: {e}"))?;
-    body.push('\n');
-    atomic_write(&path, body.as_bytes()).map_err(|e| format!("worker-mcp write failed: {e}"))?;
+    crate::atomic::write_json_pretty(&path, &config)
+        .map_err(|e| format!("worker-mcp write failed: {e}"))?;
     Ok(path)
 }
 
@@ -100,24 +95,6 @@ pub fn codex_launch_args(mcp_port: u16, cdp_port: u16) -> Vec<String> {
         "-c".into(),
         playwright_args,
     ]
-}
-
-fn tmp_path(path: &Path) -> PathBuf {
-    let mut os = path.as_os_str().to_os_string();
-    os.push(".tmp");
-    PathBuf::from(os)
-}
-
-fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = tmp_path(path);
-    let mut f = fs::File::create(&tmp)?;
-    f.write_all(contents)?;
-    f.sync_all()?;
-    drop(f);
-    fs::rename(&tmp, path)
 }
 
 #[cfg(test)]

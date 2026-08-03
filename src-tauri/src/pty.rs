@@ -23,6 +23,7 @@
 // nested-værn (profiles::NESTED_SCRUB) + per-profil credential-deny-lister
 // (PtySpawn.env_deny_prefixes/env_deny_exact).
 
+use std::borrow::Cow;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -128,20 +129,26 @@ impl DsrFilter {
     }
 
     /// Returnerer (bytes til on_output, skal-der-svares-nu).
-    fn push(&mut self, input: &[u8]) -> (Vec<u8>, bool) {
+    ///
+    /// `Cow` og ikke `Vec`: efter svaret ER filtret transparent pass-through,
+    /// men en `to_vec()` her kostede alligevel en allokering + memcpy af HVER
+    /// chunk i hele PTY'ens levetid — paa den reader-traad der ifoelge modulets
+    /// FUND 4 altid skal draene. Laanet er gratis; kun de to splejse-veje,
+    /// som kun loeber indtil den foerste DSR er besvaret, allokerer.
+    fn push<'a>(&mut self, input: &'a [u8]) -> (Cow<'a, [u8]>, bool) {
         if self.answered {
-            return (input.to_vec(), false);
+            return (Cow::Borrowed(input), false);
         }
         let mut scan = std::mem::take(&mut self.tail);
         scan.extend_from_slice(input);
         if let Some(pos) = scan.windows(4).position(|w| w == b"\x1b[6n") {
             self.answered = true;
             scan.drain(pos..pos + 4); // splejs query-bytes UD af outputtet
-            (scan, true)
+            (Cow::Owned(scan), true)
         } else {
             let keep = scan.len().saturating_sub(3);
             self.tail = scan.split_off(keep);
-            (scan, false)
+            (Cow::Owned(scan), false)
         }
     }
 
@@ -620,13 +627,13 @@ mod tests {
         // query-bytes fraværende i output.
         let mut f = DsrFilter::new();
         let (out1, reply1) = f.push(b"AB\x1b[");
-        assert_eq!(out1, b"A"); // 3-byte-halen tilbageholdes
+        assert_eq!(&*out1, b"A"); // 3-byte-halen tilbageholdes
         assert!(!reply1);
         let (out2, reply2) = f.push(b"6nCD");
-        assert_eq!(out2, b"BCD"); // query-bytes splejset UD
+        assert_eq!(&*out2, b"BCD"); // query-bytes splejset UD
         assert!(reply2); // præcis ét svar
         let (out3, reply3) = f.push(b"\x1b[6n");
-        assert_eq!(out3, b"\x1b[6n"); // senere queries røres IKKE (xterm/CC-domæne)
+        assert_eq!(&*out3, b"\x1b[6n"); // senere queries røres IKKE (xterm/CC-domæne)
         assert!(!reply3);
     }
 
@@ -634,7 +641,7 @@ mod tests {
     fn dsr_filter_flush_emits_withheld_tail() {
         let mut f = DsrFilter::new();
         let (out, replied) = f.push(b"XYZ");
-        assert_eq!(out, b"");
+        assert_eq!(&*out, b"");
         assert!(!replied);
         assert_eq!(f.flush(), b"XYZ");
         assert_eq!(f.flush(), b""); // idempotent

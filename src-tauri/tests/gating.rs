@@ -21,10 +21,8 @@ use std::time::{Duration, Instant};
 use talminal_canvas_lib::pty::{PtyHost, PtySpawn};
 use talminal_canvas_lib::registry;
 
-fn cmd_exe() -> String {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-    format!(r"{root}\System32\cmd.exe")
-}
+mod common;
+use common::cmd_exe;
 
 /// Poll indtil cond() eller timeout; returnerer sidste cond-vaerdi.
 fn wait_until(timeout: Duration, cond: impl Fn() -> bool) -> bool {

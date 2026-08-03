@@ -16,6 +16,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Card } from "./Card";
 import type { CardState, TerminalCardInfo } from "./types";
+import { flushMicrotasks } from "./testHelpers";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -75,9 +76,6 @@ const runningState: CardState = {
   epoch: 0,
 };
 
-async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 6; index += 1) await Promise.resolve();
-}
 
 describe("Card luk-knap", () => {
   let host: HTMLDivElement;
