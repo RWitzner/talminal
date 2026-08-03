@@ -130,6 +130,15 @@ har tegnet UI'et efter et rigtigt skærmbillede. Det ligner produktet, men hvert
 syntetisk, og detaljer kan afvige fra den kørende app. Står det uden forbehold øverst i
 READMEen, læses det som dokumentation af hvordan appen ser ud.
 
+Motivet viser fire kort: to Claude-kort, et Codex-kort og et browser-kort.
+
+**IKKE SANITERET — må ikke følge med til visibility-flippet i denne form.** Launch-spec'ens
+§4 kræver demomateriale uden rigtige stier, navne og projektdata. Billedet indeholder
+mindst: `C:\Users\Robin\talminal` i titelbjælken, "Welcome back Robin!" i begge
+Claude-kort, `~\talminal` i Codex-kortet, abonnementsniveau (`Claude Max`), kontotilstand
+("3 usage limit resets available"), en konkret `PR #12`, en advarsel om en MCP-server der
+mangler autentificering — og `permissions: YOLO mode`.
+
 ## Hvis du tilføjer et aktiv
 
 Skriv det ind her med kilde, tidspunkt og rettighedsgrundlag i samme pull request. Et
