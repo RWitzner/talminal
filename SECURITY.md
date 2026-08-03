@@ -93,16 +93,59 @@ selv åbner i browser-kort. Der er ingen telemetri og ingen phone-home. Se
 
 ## Kendte, uadresserede svagheder
 
-Dette er en v0.1 fra ét menneske. Følgende er kendt og ikke lukket:
+Dette er en v0.1 fra ét menneske. Listen her er ikke en undskyldning — den er så du kan
+regne dit eget vindue ud. Hvert punkt siger **hvad konsekvensen er**, ikke bare hvad der
+mangler.
 
-- **MCP-transporten** håndterer requests sekventielt uden read-timeout. En lokal proces —
-  eller et prompt-injiceret kort — kan holde loopet og dermed fryse MCP for de andre kort.
-  Origin-gaten afviser browsere før body-læsningen, så en fremmed webside er ikke den
-  realistiske angriber; et kompromitteret kort er.
-- **CSP** er ikke strammet for den bundlede frontend.
-- **Worker-config-filerne** bærer et levende Bearer-token på disken for Claude-profilen.
+### Tilgængelighed
 
-De er på listen. Finder du noget der ikke er, så rapportér det ad kanalen ovenfor.
+- **MCP-transporten håndterer requests sekventielt uden read-timeout.** Én TCP-forbindelse
+  der åbnes og så tier, holder det ene request-loop og fryser MCP for **alle** kort på
+  ubestemt tid. Det kræver hverken token eller forudgående adgang, fordi identitets-gaten
+  ligger *efter* body-læsningen. Der er ingen datavej — det er lammelse, ikke lækage. Den
+  realistiske angriber er ikke en webside (Origin-gaten afviser dem før body-læsningen),
+  men en lokal proces eller et prompt-injiceret kort.
+
+### Indeslutning
+
+- **Grænsen om appens egen origin er en allowlist, ikke en struktur.** Browser-kort må ikke
+  stå på appens origin — det håndhæves nu både ved oprettelse og ved navigation. Men
+  capability'en er stadig målrettet vinduet frem for den enkelte webview, og der er intet
+  app-ACL-manifest. Et webview-scopet manifest ville gøre grænsen strukturel, så en fremtidig
+  kodeændring ikke kan åbne den ved et uheld.
+- **Der findes ingen automatiseret fjendtlig-side-test.** Grænsen ovenfor er dækket af
+  unit-tests på politik-funktionerne, men ingen test kører en rigtig fjendtlig side mod en
+  kørende app. Halvdelen af den test kan ikke være en almindelig `cargo`-test, fordi
+  kommandofladen er registreret i binær-craten som `tests/` ikke linker.
+
+### Hemmeligheder på disken
+
+- **Worker-config-mappen arver sine rettigheder fra `%LOCALAPPDATA%`.** Filen
+  `projects/<slug>/worker-mcp/<kort>.json` bærer et Bearer-token til appens egen
+  loopback-MCP-server. Filen slettes nu når kortet lukkes, og hele mappen ryddes ved
+  opstart — men **mens et kort kører**, kan enhver proces under samme Windows-bruger læse
+  den, inklusive de andre agent-kort, som pr. definition har shell. Med tokenet kan et kort
+  sende `card_say` ind i et andet korts tråde. Der er ingen ACL-stramning på mappen.
+
+### Protokol
+
+- **`initialize` ekkoer klientens protokolversion** i stedet for at svare den vi faktisk
+  understøtter, og `MCP-Protocol-Version`-headeren valideres ikke på efterfølgende requests.
+  Det er ikke en vej ind — kun appens egne workers når `initialize` — men det betyder at
+  serveren lover en version den ikke nødvendigvis taler.
+
+### Frontend og binærer
+
+- **CSP er ikke strammet for den bundlede frontend.** `tauri.conf.json` har `csp: null`, så
+  der sendes ingen politik. Der er ingen kendt vej ind i hoved-webview'et — agent-output
+  skrives som tekstnoder, ikke HTML, og browser-kort er separate webviews — så dette er
+  manglende dybdeforsvar, ikke en åben sårbarhed.
+- **Release-binærerne indeholder byggemaskinens brugernavn** i ~60 stier fra `aws-lc`'s
+  C-kode. Rust-siden er neutraliseret (`scripts/release-build.mjs`), men C-oversætterens
+  `__FILE__`-strenge nås ikke af rustc's flag. Det udleverer et brugernavn og et
+  mappe-layout, ikke andet.
+
+Finder du noget der ikke står her, så rapportér det ad kanalen ovenfor.
 
 ## Understøttede versioner
 
