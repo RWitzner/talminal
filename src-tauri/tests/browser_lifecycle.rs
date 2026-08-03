@@ -713,3 +713,111 @@ fn failed_open_cleanup_detaches_before_emitting_dead() {
     );
     assert_eq!(*order.borrow(), vec!["close-err", "emit"]);
 }
+
+// ---------- gate 2: appens egen origin er ikke et lovligt kort-maal ----------
+
+/// Browser-kort er child-webviews INDE i vinduet `main` (`add_child`), og
+/// Tauri injicerer `__TAURI_INTERNALS__` ubetinget i hver child-webview — der
+/// er ingen External-gate i injektionen. Det der redder os i dag er Tauris
+/// egen remote-origin-check: en fremmed side faar `acl = None` og afvises.
+///
+/// Men capability'en er VINDUE-targetet (`"windows": ["main"]`, ingen
+/// `webviews`-noegle), saa hele graensen hviler paa én ting: at et browser-kort
+/// aldrig staar paa appens egen origin. Sker det, er kortet `is_local` og faar
+/// hele `generate_handler!`-fladen — 92 kommandoer, inkl. `store_secret` og
+/// `write_pty`. Det er en eskalering FORBI PTY-graensen, og det modsiger
+/// SECURITY.md's centrale loefte om at et kort giver samme adgang som en
+/// terminal.
+#[test]
+fn app_origin_is_rejected_as_a_card_url() {
+    for raw in [
+        "http://tauri.localhost",
+        "http://tauri.localhost/",
+        "https://tauri.localhost/index.html",
+        // Dev-serveren er lige saa farlig: CONTRIBUTING beder ENHVER
+        // bidragyder koere dev-bygget, og der er devUrl app-origin.
+        "http://localhost:1420",
+        "http://localhost:1420/index.html",
+        "http://127.0.0.1:1420/",
+    ] {
+        assert!(
+            browser_host::validate_card_url(Some(raw)).is_err(),
+            "appens egen origin maa ikke kunne blive et kort-maal: {raw}"
+        );
+    }
+}
+
+/// Omgaaelsesklasserne. Fire af de seks er allerede lukket gratis
+/// (`about:`/`data:`/`blob:` afvises to gange, og `about:blank` kan slet ikke
+/// `invoke`), saa her testes kun de fire der reelt kan bruges til at snige en
+/// app-origin forbi en naiv streng-sammenligning.
+#[test]
+fn app_origin_rejection_survives_the_obvious_bypasses() {
+    for raw in [
+        "http://TAURI.LOCALHOST/",    // casing
+        "http://Tauri.LocalHost/x",   // blandet casing
+        "http://tauri.localhost./",   // trailing dot
+        "http://LOCALHOST:1420/",     // casing paa dev
+        "http://tauri.localhost:80/", // eksplicit default-port
+    ] {
+        assert!(
+            browser_host::validate_card_url(Some(raw)).is_err(),
+            "omgaaelse slap igennem: {raw}"
+        );
+    }
+    // ... og normaliseringen maa ikke goere afvisningen for bred.
+    for raw in [
+        "https://example.com/",
+        "https://tauri.localhost.evil.com/", // suffix, ikke samme host
+        "https://not-tauri.localhost.dk/",
+        "http://localhost:5173/", // en ANDEN lokal port
+    ] {
+        assert!(
+            browser_host::validate_card_url(Some(raw)).is_ok(),
+            "afvisningen er for bred: {raw} er ikke appens origin"
+        );
+    }
+}
+
+/// Konstanten maa ikke drifte fra `tauri.conf.json`. Uden denne test kunne
+/// devUrl aendres til en anden port, og gate 2 ville vaere aaben i dev uden
+/// at nogen test faldt.
+#[test]
+fn dev_origin_constant_matches_tauri_conf() {
+    let conf: serde_json::Value =
+        serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+    let dev_url = conf["build"]["devUrl"]
+        .as_str()
+        .expect("build.devUrl skal findes");
+    let parsed: url::Url = dev_url.parse().expect("devUrl skal vaere en URL");
+    let key = format!(
+        "{}:{}",
+        parsed.host_str().expect("host"),
+        parsed.port().expect("port")
+    );
+    assert!(
+        browser_host::APP_ORIGINS.contains(&key.as_str()),
+        "APP_ORIGINS mangler devUrl fra tauri.conf.json ({key}); \
+         gate 2 ville vaere aaben i dev-bygget"
+    );
+}
+
+/// `navigation_allowed` er den samme politik som `validate_card_url`, men paa
+/// den anden vej ind: enhver SENERE navigation, inkl. redirects. Uden den kunne
+/// en fremmed side bare 302'e kortet hen paa appens origin, og oprettelses-
+/// tjekket ville aldrig se det.
+#[test]
+fn navigation_allowed_closes_the_redirect_path_too() {
+    let allow = |s: &str| browser_host::navigation_allowed(&s.parse::<url::Url>().unwrap());
+    assert!(!allow("http://tauri.localhost/"));
+    assert!(!allow("http://TAURI.LOCALHOST./x"));
+    assert!(!allow("http://localhost:1420/"));
+    assert!(allow("https://example.com/a/b?c=d"));
+    // about:blank er den interne blank-mekanisme og skal fortsat slippe
+    // igennem — den kan i oevrigt slet ikke `invoke`, fordi ipc-laget kraever
+    // en parsebar Origin-header.
+    assert!(allow("about:blank"));
+    for raw in ["file:///c:/x", "javascript:alert(1)", "data:text/html,x"] {
+        assert!(!allow(raw), "skema-afvisningen slap {raw} igennem");
+    }
+}
