@@ -65,8 +65,8 @@ Forventningen, målt 2026-08-03:
 
 | Trin | Forventet |
 |---|---|
-| `cargo test --locked` | 626 passed, 0 failed, 1 ignored |
-| `cargo test --locked --features supervision` | 647 passed, 0 failed, 1 ignored |
+| `cargo test --locked` | 629 passed, 0 failed, 1 ignored |
+| `cargo test --locked --features supervision` | 650 passed, 0 failed, 1 ignored |
 | `npx vitest run` | 77 suiter, 816 tests |
 | `npm run build` | `0/30 forbidden strings` |
 | `cargo fmt --check` og alle tre clippy | **nul output** |
