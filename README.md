@@ -1,10 +1,26 @@
+<div align="center"><a name="readme-top"></a>
+
 # Talminal
 
-**Tal med dine terminaler.**
+**Tal med dine terminaler.**<br/>
+Et canvas af agent-terminaler — Claude Code og Codex CLI — som du styrer med stemmen.<br/>
+Sig *"opret to kort"*, *"send: kør testene"*, *"luk kort tre"*, og se dem arbejde<br/>
+ved siden af hinanden. Til Windows 11.
 
-Et canvas af agent-terminaler — Claude Code og Codex CLI — som du styrer med stemmen.
-Sig *"opret to kort"*, *"send: kør testene"*, *"luk kort tre"*, og se dem arbejde ved
-siden af hinanden. Til Windows 11.
+[![][license-shield]][license-link]
+![][windows-shield]
+[![][tauri-shield]][tauri-link]
+[![][rust-shield]][rust-link]
+![][voice-shield]
+[![][pr-welcome-shield]][pr-welcome-link]<br/>
+[![][ci-shield]][ci-link]
+[![][github-stars-shield]][github-stars-link]
+[![][github-forks-shield]][github-forks-link]
+[![][github-contributors-shield]][github-contributors-link]
+[![][github-issues-shield]][github-issues-link]
+[![][github-last-commit-shield]][github-last-commit-link]
+
+</div>
 
 <!--
 DEMO-HERO — pladsholder.
@@ -158,3 +174,47 @@ Du kan regenerere dem under din egen konto med det medfølgende script. Se
 ---
 
 <sub>Talminal — *tal* (imperativ af "at tale") + *terminal*. Talk to your terminals.</sub>
+
+<!--
+Reference-link-definitioner.
+
+Farverne er appens egne — taget fra `src/`, ikke valgt frit: 0a1220 canvas-mørke,
+7ab6e8 blå, 4dd6b7 teal, e8b046 rav, e06058 rød, 9eafc1 stål, 8fa7e0 periwinkle.
+
+RAEKKE 1 er statisk og render altid. RAEKKE 2 spoerger GitHubs API og render
+foerst naar repoet er offentligt — indtil da viser de "repo not found".
+-->
+
+[license-link]: https://github.com/RWitzner/talminal/blob/main/LICENSE
+[license-shield]: https://img.shields.io/badge/license-Apache--2.0-9eafc1?style=flat-square&labelColor=0a1220
+
+[windows-shield]: https://img.shields.io/badge/Windows%2011-x64-7ab6e8?style=flat-square&labelColor=0a1220
+
+[tauri-link]: https://tauri.app
+[tauri-shield]: https://img.shields.io/badge/Tauri-2-4dd6b7?style=flat-square&labelColor=0a1220&logo=tauri&logoColor=edf5fc
+
+[rust-link]: https://www.rust-lang.org
+[rust-shield]: https://img.shields.io/badge/rust-1.89-e8b046?style=flat-square&labelColor=0a1220&logo=rust&logoColor=edf5fc
+
+[voice-shield]: https://img.shields.io/badge/stemme-dansk-8fa7e0?style=flat-square&labelColor=0a1220
+
+[pr-welcome-link]: https://github.com/RWitzner/talminal/pulls
+[pr-welcome-shield]: https://img.shields.io/badge/PRs-welcome-4dd6b7?style=flat-square&labelColor=0a1220
+
+[ci-link]: https://github.com/RWitzner/talminal/actions/workflows/ci.yml
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/RWitzner/talminal/ci.yml?branch=main&style=flat-square&label=CI&labelColor=0a1220
+
+[github-stars-link]: https://github.com/RWitzner/talminal/stargazers
+[github-stars-shield]: https://img.shields.io/github/stars/RWitzner/talminal?style=flat-square&labelColor=0a1220&color=e8b046&logo=github&logoColor=edf5fc
+
+[github-forks-link]: https://github.com/RWitzner/talminal/network/members
+[github-forks-shield]: https://img.shields.io/github/forks/RWitzner/talminal?style=flat-square&labelColor=0a1220&color=7ab6e8&logo=github&logoColor=edf5fc
+
+[github-contributors-link]: https://github.com/RWitzner/talminal/graphs/contributors
+[github-contributors-shield]: https://img.shields.io/github/contributors/RWitzner/talminal?style=flat-square&labelColor=0a1220&color=4dd6b7
+
+[github-issues-link]: https://github.com/RWitzner/talminal/issues
+[github-issues-shield]: https://img.shields.io/github/issues/RWitzner/talminal?style=flat-square&labelColor=0a1220&color=e06058
+
+[github-last-commit-link]: https://github.com/RWitzner/talminal/commits/main
+[github-last-commit-shield]: https://img.shields.io/github/last-commit/RWitzner/talminal?style=flat-square&labelColor=0a1220&color=9eafc1
