@@ -43,19 +43,30 @@ lejlighedsvis faktureres to gange. De øvrige tre ruter hedger ikke.
 
 ## Hvad der bliver liggende på din maskine
 
-Alt under `%LOCALAPPDATA%\Talminal\`:
+De vigtigste filer under `%LOCALAPPDATA%\Talminal\` — listen er ikke udtømmende:
 
 | Sti | Indhold |
 |---|---|
 | `settings.json` | Dine indstillinger. Ingen nøgler. |
 | `projects\<slug>\workspace.json` | Kort-layout pr. projekt |
 | `projects\<slug>\threads\<id>.jsonl` | **Rå agent-til-agent-beskeder**, append-only |
+| `projects\<slug>\browser-profiles\` | **Cookies, localStorage og cache** for hver side et browser-kort har været på. Ryddes næste gang du åbner *det* projekt — ikke når du lukker appen |
+| `projects\<slug>\worker-mcp\<kort>.json` | MCP-config pr. kort. Bærer et **loopback-sessions-token**, se noten nedenfor |
 | `hud\usage.json` | Claude Codes forbrugsprocenter, hvis du har slået statusline-tap'en til |
 | `hud\context\<kort>.json` | Kontekstvindue-procent pr. kort, samme betingelse |
-| `voice-eval\realtime-capture.jsonl` | Kun hvis du selv har slået voice-capture til |
+| `hud\tap.mjs`, `hud\lib.mjs`, `hud\tap-config.json` | Statusline-tap'ens egne filer, hvis du har installeret den |
+| Diverse små tilstandsfiler | `last_project`, `active_workspace.json`, `window_geometry.json`, `project.json`, `instance.json`, `status.json`, låsefiler. Vindues- og projekt-tilstand, **inkl. absolutte stier til dine projekter**. Ingen hemmeligheder |
+
+Bygger du med `--features supervision`, kommer `signals\` og `presence\` oveni.
 
 Dine **API-nøgler** ligger ikke her, men i Windows Credential Manager under service
 `Talminal`. Se [SECURITY.md](SECURITY.md) for hvad det beskytter mod.
+
+**Én undtagelse, så den sætning ikke misforstås:** `worker-mcp\<kort>.json` ovenfor
+bærer et `Authorization: Bearer …`-token. Det er *ikke* en API-nøgle til en udbyder — det
+er kortets identitet over for Talminals egen loopback-MCP-server, og det er ugyldigt i det
+øjeblik appen lukker. Filen slettes når kortet lukkes, og hele mappen ryddes ved næste
+opstart.
 
 ### Tråd-retention
 

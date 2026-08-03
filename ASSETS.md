@@ -16,8 +16,23 @@ i repoet, så produktet virker ud af boksen.
 
 **Klippene sublicenseres IKKE under Apache-2.0.** Apache-licensen dækker kildekoden.
 Lydfilerne er dækket af ElevenLabs' egne vilkår for genereret tale på det abonnement de
-blev lavet på. Vil du bruge dem i noget andet end Talminal selv, skal du forholde dig til
-de vilkår — ikke til Apache-2.0.
+blev lavet på.
+
+### Hvad du må — den korte version
+
+Uden en udtalt tilladelse ville en fork stå helt uden grundlag for at have filerne med.
+Derfor, eksplicit:
+
+> **Du må redistribuere klippene uændret som en del af Talminal** — i en fork, i en
+> release, i npm-tarballen, i en byggeartefakt. Det gælder også ændrede versioner af
+> Talminal, så længe klippene selv er uændrede.
+>
+> **Du må ikke bruge dem til noget andet.** Ikke i et andet produkt, ikke som lydbibliotek,
+> ikke som træningsdata, ikke løsrevet fra Talminal. Til dét skal du forholde dig til
+> ElevenLabs' vilkår — ikke til denne fil og ikke til Apache-2.0.
+
+Er du i tvivl, eller vil du gøre noget der ikke klart er dækket ovenfor: **regenerér dem
+selv.** Så er de dine, under din egen konto, og hele spørgsmålet bortfalder.
 
 **Du kan regenerere dem selv.** `voice-eval/gen-reply-clips-elevenlabs.mjs` er
 generatoren; sæt `ELEVENLABS_API_KEY` og kør den. Så er klippene dine, under din egen
