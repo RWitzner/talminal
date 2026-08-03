@@ -7,7 +7,7 @@ svartidsløfte — men spørgsmål er velkomne, og de bliver læst.
 
 | Har du... | Så brug |
 |---|---|
-| Et spørgsmål om brug | [Discussions](https://github.com/RWitzner/talminal/discussions), eller et issue hvis Discussions ikke er slået til |
+| Et spørgsmål om brug | Læs videre her først — ellers [åbn et blankt issue](https://github.com/RWitzner/talminal/issues/new) |
 | Fundet en fejl | [Åbn et issue](https://github.com/RWitzner/talminal/issues/new/choose) |
 | Et ønske til en feature | Et issue — sig gerne hvad du prøvede at opnå, ikke kun hvad du vil have bygget |
 | Fundet et **sikkerhedsproblem** | **Ikke et issue.** Se [SECURITY.md](SECURITY.md) |

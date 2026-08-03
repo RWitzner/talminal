@@ -151,6 +151,26 @@ Kører du aldrig kommandoen, rører intet i dette repo din `settings.json`.
   SmartScreen advare. npm-udpakkede filer bærer ikke Mark-of-the-Web, så den vej rammer
   det ikke.
 
+## Kendte mangler i v0.1
+
+Et samarbejds-repo må gerne have en TODO-liste — det er en invitation, ikke en skam. Her er
+det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
+
+- **Canvas starter altid tomt.** Det er en kontrakt, ikke en fejl: projektfiler og agenternes
+  egne tråde overlever, men korttopologi og layout genskabes ikke. Lukkede du med tolv kort
+  oppe, er de væk næste gang.
+- **Tråde kan ikke slettes fra UI'et.** `threads\<id>.jsonl` er append-only og roterer ikke.
+  Vil du rydde op, sletter du filerne manuelt mens appen er lukket.
+- **Ingen afinstallations-handling.** [PRIVACY.md](PRIVACY.md) lister hvad appen efterlader,
+  men der er intet script og ingen knap der rydder det.
+- **Ingen status-liste over forudsætninger.** Mangler `claude.exe`, en nøgle eller en
+  mikrofon, får du en fejl når du rammer den — ikke en oversigt der siger det på forhånd.
+- **Første browser-kort kræver netværk.** Det starter `npx @playwright/mcp@0.0.78`, som
+  hentes fra npm første gang. Fejler det, sker det inde i agentens MCP-lag, og Talminal
+  siger ikke selv noget om det.
+- **Sikkerhedsmangler** står for sig i [SECURITY.md](SECURITY.md) med konsekvensen af hver
+  enkelt — læs den, ikke kun denne liste.
+
 ## Dokumentation
 
 | | |
