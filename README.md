@@ -55,6 +55,19 @@ sted.
 > **Endnu ikke udgivet.** npm-pakken publiceres først ved v0.1.0. Navnet er reserveret,
 > men kommandoerne ovenfor virker ikke endnu. Indtil da: byg fra kilde.
 
+### Opdatering
+
+Der er **ingen auto-update og ingen notifikation** — appen siger ikke selv til når
+der er kommet en nyere version. Du henter den:
+
+```powershell
+npm i -g talminal@latest    # hvis du installerede globalt
+npx talminal@latest         # npx cacher, så uden @latest kan du køre en gammel
+```
+
+Nye versioner annonceres under [Releases](https://github.com/RWitzner/talminal/releases).
+En automatisk opdateringsvej er fravalgt til v0.1 — se de kendte mangler nederst.
+
 ### Byg fra kilde
 
 ```powershell
@@ -170,6 +183,9 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 - **Første browser-kort kræver netværk.** Det starter `npx @playwright/mcp@0.0.78`, som
   hentes fra npm første gang. Fejler det, sker det inde i agentens MCP-lag, og Talminal
   siger ikke selv noget om det.
+- **Ingen auto-update.** Appen tjekker ikke om der er kommet en nyere version og siger
+  ikke selv til. Du opdaterer manuelt med `npm i -g talminal@latest`. En updater er
+  fravalgt til v0.1 og hører i v0.2.
 - **Sikkerhedsmangler** står for sig i [SECURITY.md](SECURITY.md) med konsekvensen af hver
   enkelt — læs den, ikke kun denne liste.
 
