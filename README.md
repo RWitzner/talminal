@@ -46,6 +46,9 @@ Hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan ændres u
 Indstillinger → Stemme. Stemmen er en genvej, ikke en betingelse: et kort kan også oprettes
 med musen ved at **dobbeltklikke på tom canvasflade.**
 
+**Ét canvas hører til ét projekt.** Sidebaren til venstre viser dine projekter og skifter
+mellem dem; listen overlever genstart, og **+ Tilføj projekt** åbner en mappevælger.
+
 Canvas **starter altid tomt.** Dine projektfiler og agenternes egne tråde overlever, men
 korttopologien gendannes ikke — det er en udtalt kontrakt, ikke en fejl.
 
@@ -107,18 +110,20 @@ Er den ikke sikker nok på hvad du sagde, gør den ingenting i stedet for noget 
 Et kort kan hente et andet kort ind som sparringspartner. Agenten gør det selv gennem
 **Talminals egen MCP-server**, som er registreret hos begge agenter under navnet
 **`talminal`**. Den giver dem syv værktøjer: fire til browser-kort og tre til at tale
-sammen — `card_pair`, `card_say` og `card_inbox`.
+sammen gennem en tråd.
 
-**Skriv det ind i din prompt.** Din agent har som regel flere veje der *lyder* rigtige —
-Playwrights egne faner, Claude in Chrome, eller bare at skrive i sin egen terminal — og
-vælger den en af dem, sker der ingenting du kan se. Så vær eksplicit:
+**Du skal bare nævne MCP'en.** Serveren udleverer hele protokollen til agenten — hvordan
+den parrer, svarer og henter svar — så du behøver ikke kende værktøjsnavnene. Det du skal
+være tydelig om, er *hvilken vej* den skal gå: svarer den i sin egen terminal i stedet for
+i tråden, når beskeden ingen, og du ser ingenting.
 
-> *"Par dig med et codex-kort gennem `talminal`-MCP'en og spar med den om X. Svar med
-> `card_say`, og læs dens svar med `card_inbox`."*
+Så meget er nok:
 
-Det samme gælder browsere: bed den om at åbne et **browser-kort** frem for at bruge sine
-egne fane-værktøjer. Værktøjsbeskrivelserne siger det allerede til agenten, men en linje i
-din egen prompt fjerner tvivlen.
+> *"Åbn en ny terminal og send en prompt til kort et: start en sparringssession med et
+> Codex-kort gennem Talminal-MCP'en. I skal sparre om X."*
+
+Læg mærke til at det er **én sætning med to kommandoer** — et nyt kort, og en besked til
+kort et. Resten ordner agenterne selv.
 
 Grænserne, så du ikke undrer dig over dem undervejs:
 
@@ -138,9 +143,13 @@ npx talminal
 npm i -g talminal
 ```
 
-Kør kommandoen **fra en projektmappe**. Talminal finder projektroden (nærmeste `.git`) og
-åbner et canvas for netop det repo. Kører du den et andet sted, får du et canvas for det
-sted.
+**Første gang** bestemmer arbejdsmappen hvad der åbnes: Talminal finder projektroden
+(nærmeste `.git`) og lægger den i din projektliste. Står du et sted uden `.git`, bliver
+mappen selv til projektet.
+
+**Derefter kan du bare skrive `talminal` hvor som helst.** Projekterne står i sidebaren og
+overlever genstart, og **+ Tilføj projekt** åbner en mappevælger — du behøver ikke ramme
+den rigtige mappe i terminalen.
 
 Kræver **Windows 11 x64** — `os`/`cpu` i pakken gør en install på andre platforme til en
 ren fejl frem for en app der ikke virker.
@@ -208,8 +217,9 @@ Stemmevejen har to trin, og de kan bruge **den samme nøgle**:
 
 **Vil du nøjes med én nøgle, så vælg `openai`-ruten.** Tale-til-tekst og routeren deler
 nøgle-slot, så én OpenAI-nøgle dækker hele stemmevejen. Afvejningen er ærlig: den er
-omkring dobbelt så langsom som standardruten — 1,3 s mod 0,77 s i median. Begge scorede
-41/41 i eval-suiten, så det er hastighed, ikke præcision, der adskiller dem.
+omkring dobbelt så langsom som standardruten — 1,3 s mod 0,77 s i median. Begge ramte 41
+af 41 ytringer sidst eval-suiten blev kørt; korpusset er siden vokset til 48 og ikke kørt
+igen, så det er hastighed — ikke aktuelt målt præcision — der skiller dem.
 
 **Bemærk på standardruten:** `vercel` affyrer et andet skud efter 1200 ms, hvis det første
 ikke er svaret endnu. Det giver lejlighedsvis to fakturerbare requests pr. ytring. De
