@@ -56,6 +56,21 @@ describe('npm-pakkens form', () => {
     expect(read('.gitignore')).toMatch(/^vendor\/$/m)
   })
 
+  // MAALT 2026-08-03: uden `tauri/custom-protocol` serverer binaeren ikke den
+  // indlejrede frontend, men forsoeger at loade `devUrl` — en bruger uden en
+  // koerende Vite-server faar ERR_CONNECTION_REFUSED i stedet for en app.
+  // `tauri build` saetter flaget selv; `cargo build` goer ikke, og
+  // release-build.mjs kalder cargo direkte for at kunne saette RUSTFLAGS.
+  //
+  // Faelden er tavs paa alle de maader vi ellers tjekker: exe'en bygger, den
+  // har rigtig stoerrelsesorden, `npm pack` er tilfreds, og shim'en starter
+  // den fint. Kun et FAKTISK app-start afsloerer den. Forskellen kan ses paa
+  // stoerrelsen — 16,2 MB uden den indlejrede frontend mod 17,3 MB med.
+  it('release-build bygger MED tauri/custom-protocol', () => {
+    const script = read('scripts/release-build.mjs')
+    expect(script).toMatch(/'--features',\s*'tauri\/custom-protocol'/)
+  })
+
   it('os og cpu giver en ren EBADPLATFORM', () => {
     expect(pkg.os).toEqual(['win32'])
     expect(pkg.cpu).toEqual(['x64'])
