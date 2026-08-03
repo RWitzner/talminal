@@ -132,13 +132,23 @@ READMEen, læses det som dokumentation af hvordan appen ser ud.
 
 Motivet viser fire kort: to Claude-kort, et Codex-kort og et browser-kort.
 
-**IKKE SANITERET — må ikke følge med til visibility-flippet i denne form.** Launch-spec'ens
-§4 kræver demomateriale uden rigtige stier, navne og projektdata. Billedet indeholder
-mindst: ejerens fulde hjemmemappe-sti (`C:\Users\x\talminal` — her med repoets neutrale
-pladsholder) i titelbjælken, en personlig hilsen med fornavn i begge
-Claude-kort, `~\talminal` i Codex-kortet, abonnementsniveau (`Claude Max`), kontotilstand
-("3 usage limit resets available"), en konkret `PR #12`, en advarsel om en MCP-server der
-mangler autentificering — og `permissions: YOLO mode`.
+**Delvist saniteret — ejer-godkendt 2026-08-03.** Launch-spec'ens §4 beder om
+demomateriale uden rigtige stier, navne og projektdata. Ejerens mailadresse er redigeret
+ud, og resten er en bevidst beslutning frem for en forglemmelse. Optegnet her, så den
+næste der kigger ved at det er vejet og ikke overset:
+
+- Ejerens hjemmemappe-sti (`C:\Users\x\talminal` — her med repoets neutrale pladsholder)
+  i titelbjælken, og fornavn i begge Claude-kort. Navnet står i forvejen i
+  [NOTICE](NOTICE) og `package.json` — Apache-2.0 kræver tilskrivning.
+- Abonnementsniveau (`Claude Max`), kontotilstand (*"3 usage limit resets available"*) og
+  en konkret `PR #12`. Alt sammen uden betydning for en udenforstående.
+- En advarsel om en MCP-server der mangler autentificering, og `permissions: YOLO mode` i
+  Codex-kortet. **Det sidste er værd at kende:** billedet viser en agent der kører med
+  tilladelser slået fra. Det er brugerens egen codex-opsætning — Talminal sender ingen
+  tilladelses-flag, og [SECURITY.md](SECURITY.md) siger det ligeud — men det er altså ikke
+  en anbefaling, det er et øjebliksbillede af én maskine.
+
+Skiftes billedet ud, opdateres denne liste i samme pull request.
 
 ## Hvis du tilføjer et aktiv
 
