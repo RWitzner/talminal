@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label=""><title>Kendte mangler</title>
+  <g stroke="#718297" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M10 17 L14 21 L21 13"/>
+    <path d="M31 17 H56"/>
+    <path d="M10 32 L14 36 L21 28"/>
+    <path d="M31 32 H56"/>
+  </g>
+  <rect x="9" y="43" width="13" height="13" rx="3.5" fill="none" stroke="#e8b046" stroke-width="4"/>
+  <path d="M31 49 H56" stroke="#e8b046" stroke-width="4" stroke-linecap="round"/>
+</svg>

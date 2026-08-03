@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 196" width="880" height="196" role="img" aria-label="Du holder Ctrl+Shift+Space nede og siger 'Åbn tre terminaler'. Tre nummererede kort starter op på canvas.">
+  <title>Du siger det. Kortene kommer.</title>
+
+  <rect x="0.5" y="0.5" width="879" height="195" rx="14" fill="#0d0f12" stroke="#9eafc1" stroke-opacity="0.16"/>
+
+  <!-- ── venstre: ytringen, én venstrejusteret stak ──────────────── -->
+
+  <rect x="44" y="52" width="152" height="30" rx="7" fill="#02060c" stroke="#9eafc1" stroke-opacity="0.4"/>
+  <text x="120" y="72" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="13" fill="#9eafc1" textLength="120" lengthAdjust="spacingAndGlyphs">Ctrl+Shift+Space</text>
+  <text x="206" y="72" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="12.5" fill="#718297">holdes nede</text>
+
+  <!-- stemmebolge: daempet, og paa samme baseline som sætningen -->
+  <g fill="#e8b046" fill-opacity="0.9">
+    <rect x="44"  y="112" width="3.5" height="10" rx="1.75" opacity="0.5"/>
+    <rect x="53"  y="107" width="3.5" height="20" rx="1.75" opacity="0.7"/>
+    <rect x="62"  y="102" width="3.5" height="30" rx="1.75" opacity="0.9"/>
+    <rect x="71"  y="106" width="3.5" height="22" rx="1.75" opacity="0.75"/>
+    <rect x="80"  y="99"  width="3.5" height="36" rx="1.75"/>
+    <rect x="89"  y="108" width="3.5" height="18" rx="1.75" opacity="0.7"/>
+    <rect x="98"  y="104" width="3.5" height="26" rx="1.75" opacity="0.85"/>
+    <rect x="107" y="113" width="3.5" height="8"  rx="1.75" opacity="0.45"/>
+  </g>
+
+  <text x="128" y="124" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="20" fill="#edf5fc" textLength="252" lengthAdjust="spacingAndGlyphs">"Åbn tre terminaler."</text>
+
+  <!-- ── pil: transformationen, tydeligere ───────────────────────── -->
+  <g stroke="#9eafc1" stroke-opacity="0.7" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M424 98 H468"/>
+    <path d="M460 91 L468 98 L460 105"/>
+  </g>
+
+  <!-- ── hojre: tre kort, hver med sin statusprik ────────────────── -->
+  <g>
+    <rect x="506" y="50" width="106" height="96" rx="9" fill="#02060c" stroke="#7ab6e8" stroke-opacity="0.55"/>
+    <circle cx="525" cy="70" r="9" fill="#7ab6e8" fill-opacity="0.16"/>
+    <text x="525" y="75" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="12.5" fill="#7ab6e8">1</text>
+    <circle cx="598" cy="70" r="3.5" fill="#7ab6e8"/>
+    <rect x="518" y="96"  width="72" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="518" y="108" width="54" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="518" y="120" width="64" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+
+    <rect x="626" y="50" width="106" height="96" rx="9" fill="#02060c" stroke="#7ab6e8" stroke-opacity="0.55"/>
+    <circle cx="645" cy="70" r="9" fill="#7ab6e8" fill-opacity="0.16"/>
+    <text x="645" y="75" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="12.5" fill="#7ab6e8">2</text>
+    <circle cx="718" cy="70" r="3.5" fill="#7ab6e8"/>
+    <rect x="638" y="96"  width="62" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="638" y="108" width="76" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="638" y="120" width="46" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+
+    <rect x="746" y="50" width="106" height="96" rx="9" fill="#02060c" stroke="#7ab6e8" stroke-opacity="0.55"/>
+    <circle cx="765" cy="70" r="9" fill="#7ab6e8" fill-opacity="0.16"/>
+    <text x="765" y="75" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Consolas,Menlo,monospace" font-size="12.5" fill="#7ab6e8">3</text>
+    <circle cx="838" cy="70" r="3.5" fill="#7ab6e8"/>
+    <rect x="758" y="96"  width="58" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="758" y="108" width="70" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+    <rect x="758" y="120" width="52" height="4" rx="2" fill="#9eafc1" fill-opacity="0.2"/>
+  </g>
+</svg>

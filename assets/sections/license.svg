@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label=""><title>Licens</title>
+  <path d="M40 8 H16 a6 6 0 0 0 -6 6 V50 a6 6 0 0 0 6 6 H34" fill="none" stroke="#718297" stroke-width="4" stroke-linecap="round"/>
+  <path d="M20 20 H40" stroke="#718297" stroke-width="4" stroke-linecap="round" stroke-opacity="0.5"/>
+  <path d="M20 30 H34" stroke="#718297" stroke-width="4" stroke-linecap="round" stroke-opacity="0.5"/>
+  <circle cx="45" cy="41" r="11" fill="none" stroke="#8fa7e0" stroke-width="4"/>
+  <path d="M40 41 L44 45 L51 37" fill="none" stroke="#8fa7e0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

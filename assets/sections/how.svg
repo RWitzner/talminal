@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label=""><title>Sådan virker det</title>
+  <rect x="6" y="12" width="52" height="40" rx="7" fill="none" stroke="#718297" stroke-width="4"/>
+  <path d="M6 23 H58" stroke="#718297" stroke-width="4" stroke-opacity="0.55"/>
+  <g fill="#e8b046">
+    <rect x="16" y="35" width="4" height="6"  rx="2"/>
+    <rect x="24" y="31" width="4" height="14" rx="2"/>
+    <rect x="32" y="28" width="4" height="20" rx="2"/>
+    <rect x="40" y="32" width="4" height="12" rx="2"/>
+    <rect x="48" y="36" width="4" height="5"  rx="2"/>
+  </g>
+</svg>

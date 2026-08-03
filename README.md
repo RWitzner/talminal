@@ -31,10 +31,14 @@ ASSETS.md. En demo-GIF af den kørende app er stadig ønsket, men hører efter v
 
 ---
 
-## Sådan virker det
+## <img src="assets/sections/how.svg" width="26" align="absmiddle"> Sådan virker det
 
 Canvas'et er et gitter af **nummererede kort**. Hvert kort er en rigtig agent-terminal —
 Claude Code eller Codex CLI — og **nummeret er det du taler til.**
+
+<img src="assets/say-see.svg" alt="Du holder Ctrl+Shift+Space nede og siger 'Åbn tre terminaler'. Tre nummererede kort starter op på canvas." width="880">
+
+<sub>Prikken på hvert kort er dets tilstand. Farverne er appens egne, og de betyder det samme her som inde i produktet: blå starter · teal kører · rav venter på dig · rød fejlet.</sub>
 
 Hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan ændres under
 Indstillinger → Stemme. Stemmen er en genvej, ikke en betingelse: et kort kan også oprettes
@@ -122,7 +126,7 @@ Grænserne, så du ikke undrer dig over dem undervejs:
 - **En ubesvaret delegation udløber** — efter fem minutters stilstand, og senest efter tyve.
 - Svarer en agent i sin egen terminal i stedet for gennem tråden, **når det ingen.**
 
-## Installation
+## <img src="assets/sections/install.svg" width="26" align="absmiddle"> Installation
 
 ```powershell
 # Prøv den — kør fra den projektmappe du vil arbejde i
@@ -164,7 +168,7 @@ npm run tauri dev
 Første byg tager nogle minutter — `rust-toolchain.toml` får `rustup` til at hente den
 pinnede toolchain, og Rust-siden skal kompileres helt.
 
-## Forudsætninger
+## <img src="assets/sections/req.svg" width="26" align="absmiddle"> Forudsætninger
 
 | Krav | Noter |
 |---|---|
@@ -180,7 +184,7 @@ pinnede toolchain, og Rust-siden skal kompileres helt.
 Appen starter fint **uden nogen nøgler**. Kort, terminaler og browser-kort virker; det er
 kun stemmevejen der beder om noget.
 
-## Nøgler (BYOK)
+## <img src="assets/sections/keys.svg" width="26" align="absmiddle"> Nøgler (BYOK)
 
 Talminal har ingen konto og ingen server. Du indtaster dine egne nøgler under
 **Indstillinger → Nøgler**, og de gemmes i Windows Credential Manager — ikke i en fil.
@@ -209,7 +213,7 @@ omkring dobbelt så langsom som standardruten — 1,3 s mod 0,77 s i median. Beg
 ikke er svaret endnu. Det giver lejlighedsvis to fakturerbare requests pr. ytring. De
 øvrige ruter gør det ikke. Se [PRIVACY.md](docs/PRIVACY.md).
 
-## Statusline-tap (valgfri)
+## <img src="assets/sections/hud.svg" width="26" align="absmiddle"> Statusline-tap (valgfri)
 
 <img src="assets/hud.png" alt="HUD'ens forbrugsmåler: 5T står på 3 % med 3t58m tilbage, UGE på 53 % med 2d5t tilbage" width="231" height="67">
 
@@ -227,7 +231,7 @@ backup af filen første gang, og `node statusline-tap/install.mjs --uninstall` r
 
 Kører du aldrig kommandoen, rører intet i dette repo din `settings.json`.
 
-## Hvad du skal vide, før du kører den
+## <img src="assets/sections/warn.svg" width="26" align="absmiddle"> Hvad du skal vide, før du kører den
 
 - **Et kort er ikke en sandkasse.** Agenten får præcis samme adgang som en terminal åbnet
   i det workspace. Talminal sender heller ingen tilladelses-flag til agenterne, så de
@@ -240,7 +244,7 @@ Kører du aldrig kommandoen, rører intet i dette repo din `settings.json`.
   SmartScreen advare. npm-udpakkede filer bærer ikke Mark-of-the-Web, så den vej rammer
   det ikke.
 
-## Kendte mangler i v0.1
+## <img src="assets/sections/todo.svg" width="26" align="absmiddle"> Kendte mangler i v0.1
 
 Et samarbejds-repo må gerne have en TODO-liste — det er en invitation, ikke en skam. Her er
 det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
@@ -263,7 +267,7 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 - **Sikkerhedsmangler** står for sig i [SECURITY.md](.github/SECURITY.md) med konsekvensen af hver
   enkelt — læs den, ikke kun denne liste.
 
-## Dokumentation
+## <img src="assets/sections/docs.svg" width="26" align="absmiddle"> Dokumentation
 
 | | |
 |---|---|
@@ -274,7 +278,7 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 | [SUPPORT.md](.github/SUPPORT.md) | Spørgsmål og de hyppigste årsager |
 | [ASSETS.md](ASSETS.md) | Medieaktiver og deres rettighedsgrundlag |
 
-## Licens
+## <img src="assets/sections/license.svg" width="26" align="absmiddle"> Licens
 
 [Apache License 2.0](LICENSE) — se også [NOTICE](NOTICE).
 
@@ -290,8 +294,14 @@ Du kan regenerere dem under din egen konto med det medfølgende script. Se
 <!--
 Reference-link-definitioner.
 
-Farverne er appens egne — taget fra `src/`, ikke valgt frit: 0a1220 canvas-mørke,
-7ab6e8 blå, 4dd6b7 teal, e8b046 rav, e06058 rød, 9eafc1 stål, 8fa7e0 periwinkle.
+Farverne er appens egne, taget fra `src/`, og de BETYDER noget i koden:
+7ab6e8 blå = starter · 4dd6b7 teal = kører · e8b046 rav = venter på dig ·
+e06058 rød = fejlet (WorkspaceRail.tsx:358-369, UsageHud.tsx:68-71,
+Settings.tsx:295-298). Dertil 9eafc1 og 718297 stål, 8fa7e0 periwinkle.
+
+0a1220 er IKKE en app-farve. Den findes kun i denne fil, som mørk bagbund på
+badges. Appens egne mørke er 0d0f12 (canvasfladen, App.tsx:1274) og 02060c
+(kortets terminal, Card.tsx:259) — brug DEM hvis du tegner nye aktiver.
 
 RAEKKE 1 er statisk og render altid. RAEKKE 2 spoerger GitHubs API og render
 foerst naar repoet er offentligt — indtil da viser de "repo not found".

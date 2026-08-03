@@ -148,6 +148,36 @@ næste der kigger ved at det er vejet og ikke overset:
 
 Skiftes billedet ud, opdateres denne liste i samme pull request.
 
+## READMEens grafik — `assets/say-see.svg` og `assets/sections/*.svg`
+
+Ti håndtegnede SVG'er lavet til projektet, dækket af [LICENSE](LICENSE) som resten af
+repoet. Ingen generator, intet bibliotek, ingen tredjepartskilde.
+
+- `say-see.svg` — signaturstrimlen øverst i afsnittet *"Sådan virker det"*: tastetryk,
+  stemmebølge, den sagte sætning, og de tre nummererede kort den giver.
+- `sections/{how,install,req,keys,hud,warn,todo,docs,license}.svg` — ét ikon pr.
+  H2-overskrift, vist ved 26 px.
+
+**Farverne er ikke valgt frit.** Stregfarven er `#718297` (`Settings.tsx:1198`), og hver
+accent er appens egen med sin kodede betydning: `#7ab6e8` starter, `#4dd6b7` kører,
+`#e8b046` venter på dig, `#e06058` fejlet (`WorkspaceRail.tsx:358-369`,
+`UsageHud.tsx:68-71`). Fladerne i strimlen er `#0d0f12` og `#02060c` — canvas og
+kort-terminal, som i appen. En læser lærer altså appens statussprog af READMEen.
+
+**To bindinger der ikke må brydes ved redigering:**
+
+1. **Ingen `<defs>`, gradienter eller `<pattern>`.** Filerne er flade fyld og streger med
+   vilje. GitHubs SVG-sanitizer kan fjerne definitioner, og et `fill="url(#…)"` der ikke
+   kan opløses, bliver til en sort flade i stedet for at fejle synligt.
+2. **`textLength` på tekst i `say-see.svg` skal blive stående.** Strimlen sætter tekst i
+   systemets monospace, som varierer mellem maskiner; `textLength` fastlåser bredden, så
+   ingen fremmed font kan skubbe layoutet ud af balance.
+
+Ikonerne er tegnet til at overleve 26 px og til at bære på både lyst og mørkt tema, så der
+findes **med vilje ingen dark-varianter** — det er derfor stregen er `#718297` og ikke den
+lysere `#9eafc1`. Kontrolleret ved at rendere hele sættet i begge temaer ved 26 px før de
+blev lagt ind.
+
 ## HUD-udsnit — `assets/hud.png`
 
 231×67 PNG, 13687 B, SHA-256 (16) `1a35a2d94942e5ac`. Sidder i [README.md](README.md)s

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label=""><title>Hvad du skal vide — kortet er ikke en sandkasse</title>
+  <path d="M44 12 H51 a7 7 0 0 1 7 7 V45 a7 7 0 0 1 -7 7 H13 a7 7 0 0 1 -7 -7 V19 a7 7 0 0 1 7 -7 H20"
+        fill="none" stroke="#e06058" stroke-width="4" stroke-linecap="round"/>
+  <path d="M26 32 H46" stroke="#e06058" stroke-width="4" stroke-linecap="round" stroke-opacity="0.45"/>
+  <path d="M38 24 L46 32 L38 40" fill="none" stroke="#e06058" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

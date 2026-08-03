@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label=""><title>Dokumentation</title>
+  <rect x="8" y="8" width="34" height="42" rx="6" fill="none" stroke="#718297" stroke-width="4" stroke-opacity="0.45"/>
+  <rect x="22" y="16" width="34" height="42" rx="6" fill="#ffffff" fill-opacity="0" stroke="#718297" stroke-width="4"/>
+  <path d="M28 16 V58" stroke="#7ab6e8" stroke-width="4" stroke-linecap="round"/>
+</svg>
