@@ -170,3 +170,97 @@ fn cc_profile_deny_lists_scrub_credentials_in_both_layers() {
     }
     host.kill_and_teardown().expect("teardown");
 }
+
+// ---------- (d) scrubben er CASE-INSENSITIV (gate 9) ----------
+
+/// Windows' miljoeblok BEVARER den casing en variabel blev sat med, mens
+/// opslag er case-insensitivt. Deny-listerne er uppercase, saa en variabel
+/// sat som `openai_api_key` (hvilket mange guides og `setx`-eksempler
+/// skriver) ramte hverken prefix- eller exact-laget — og blev arvet af
+/// agent-processen, som laeser den som `OPENAI_API_KEY`. Deny-listen er et
+/// ERKLAERET loefte i SECURITY.md om at et kort ikke ser brugerens
+/// provider-noegler, og bruddet var tavst.
+///
+/// Testen daekker BEGGE retninger. Kun at maale at noget fjernes ville
+/// efterlade den modsatte fejl (for bred scrub = env_clear ad bagvejen)
+/// utestet — samme klasse som
+/// `~/brain/patterns/only-negative-invariants-leave-a-feature-untested`.
+#[test]
+fn env_scrub_matches_case_insensitively_in_all_three_layers() {
+    // Navnene er UNIKKE for denne test. Det er ikke pedanteri: Windows'
+    // miljoeblok er case-insensitiv ved opslag, saa hvis en anden test
+    // allerede har sat fx OPENAI_API_KEY, ville et `set_var` med lowercase
+    // opdatere DEN post og beholde dens uppercase-navn — og testen ville
+    // blive groen uden at bevise noget.
+    let lower_prefix = "openai_t1_lower_probe"; // prefix-laget: OPENAI_
+    let lower_exact = "npm_token_t1_probe"; // se nedenfor
+    let lower_nested = "codex_sandbox_t1_probe"; // nested: CODEX_SANDBOX*
+    let lower_keep = "canvas_t1_lower_keep"; // paa INGEN liste
+
+    std::env::set_var(lower_prefix, "sk-lower-must-never-reach-child");
+    std::env::set_var(lower_nested, "1");
+    std::env::set_var(lower_keep, "survives");
+
+    // Forudsaetnings-assert: bekraeft at variablerne FAKTISK staar med
+    // lowercase i vores egen miljoeblok. Foldede Windows dem ind i en
+    // eksisterende uppercase-post, beviser testen intet — og saa skal den
+    // sige det hoejt i stedet for at vaere groen.
+    let ours: Vec<String> = std::env::vars().map(|(k, _)| k).collect();
+    for name in [lower_prefix, lower_nested, lower_keep] {
+        assert!(
+            ours.iter().any(|k| k == name),
+            "forudsaetning brudt: {name} findes ikke med lowercase i parent-env \
+             (Windows foldede den formentlig ind i en eksisterende post) — \
+             testen ville ellers vaere falsk groen"
+        );
+    }
+
+    // Exact-laget testes med en KONSTRUERET deny-liste frem for profilens
+    // egen, saa navnet kan vaere unikt for testen. Semantikken er den samme
+    // (`k == e`), og det er semantikken der er i stykker.
+    let p = profiles::profile("claude").expect("claude profile");
+    std::env::set_var(lower_exact, "npm-lower-must-never-reach-child");
+    let mut exact: Vec<String> = p.env_deny_exact.iter().map(|s| s.to_string()).collect();
+    exact.push(lower_exact.to_uppercase());
+
+    let (host, buf) = spawn_env_dump(
+        p.env_deny_prefixes.iter().map(|s| s.to_string()).collect(),
+        exact,
+        vec![("TALMINAL_SESSION_ID".into(), "card-case".into())],
+    );
+    assert!(
+        wait_for(
+            &buf,
+            "TALMINAL_SESSION_ID=card-case",
+            Duration::from_secs(10)
+        ),
+        "child env dump not seen; stripped output: {}",
+        stripped(&buf)
+    );
+    assert!(wait_exit(&host, Duration::from_secs(10)).is_some());
+    std::thread::sleep(Duration::from_millis(300));
+    let text = stripped(&buf);
+
+    // Retning 1 — lowercase-varianter SKAL fjernes, ét lag ad gangen.
+    for (k, lag) in [
+        (lower_prefix, "prefix"),
+        (lower_exact, "exact"),
+        (lower_nested, "nested"),
+    ] {
+        assert!(
+            !text.contains(&format!("\n{k}=")),
+            "{lag}-laget er case-sensitivt: {k} naaede child-env. \
+             Deny-listerne er uppercase, og Windows bevarer den casing \
+             variablen blev sat med."
+        );
+    }
+
+    // Retning 2 — scrubben maa ikke blive for bred. En lowercase-variabel
+    // uden for begge lister skal stadig arves.
+    assert!(
+        text.contains(&format!("\n{lower_keep}=survives")),
+        "scrub must stay targeted: {lower_keep} er paa ingen liste og skal arves"
+    );
+
+    host.kill_and_teardown().expect("teardown");
+}

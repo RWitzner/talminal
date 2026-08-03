@@ -219,13 +219,28 @@ impl PtyHost {
         // §20.3 er ejer-beslutning — credentials bor i brugerens
         // config-filer; CC kræver mange Windows-vars). Fuldt minimalt env =
         // M2.5; residualet (øvrige ambiente vars) er journalført.
+        // Case-normalisering (gate 9): Windows' miljoeblok BEVARER den casing
+        // variablen blev sat med, mens opslag er case-insensitivt. Begge
+        // deny-lister er uppercase, saa `openai_api_key` — som mange guides og
+        // `setx`-eksempler skriver — ramte hverken prefix- eller exact-laget og
+        // blev arvet af agenten, der laeser den som `OPENAI_API_KEY`.
+        // Deny-listen er et ERKLAERET loefte i SECURITY.md; bruddet var tavst.
+        // `env_remove` SKAL fortsat kaldes med det ORIGINALE navn — miljoeblokken
+        // indeholder den oprindelige casing, og en uppercased noegle ville ikke
+        // fjerne noget.
         for (k, _) in std::env::vars() {
+            let key = k.to_ascii_uppercase();
+            // NB: nested-laget faar det ORIGINALE navn, ikke `key`. Funktionen
+            // normaliserer selv (den er `pub` og skal vaere korrekt for enhver
+            // kalder), og ved at lade den goere det her forbliver dens eget
+            // vaern load-bearing — en mutationsproeve fandt at et
+            // for-normaliseret argument gjorde det til doedt forsvar.
             if crate::profiles::nested_scrub_matches(&k)
                 || spec
                     .env_deny_prefixes
                     .iter()
-                    .any(|p| k.starts_with(p.as_str()))
-                || spec.env_deny_exact.iter().any(|e| k == e.as_str())
+                    .any(|p| key.starts_with(p.as_str()))
+                || spec.env_deny_exact.iter().any(|e| key == e.as_str())
             {
                 cmd.env_remove(&k);
             }
