@@ -141,6 +141,9 @@ npx talminal
 
 # Behold den
 npm i -g talminal
+
+# Derefter er det bare det her, hvor som helst
+talminal
 ```
 
 **Første gang** bestemmer arbejdsmappen hvad der åbnes: Talminal finder projektroden
