@@ -63,6 +63,28 @@ modtager også tekst fra de websider agenten selv styrer, og fra en anden agent 
 `card_say`. Det er en gradsforskel — Claude Code i en terminal har også WebFetch — men det
 er dét, du skal kunne se.
 
+### Hvorfor et browser-kort ikke kan nå appens kommandoer
+
+Løftet ovenfor — *"hverken mere eller mindre"* — hviler på en grænse det er værd at kende,
+fordi den ikke er indlysende fra koden.
+
+Browser-kort er child-webviews **inde i** hovedvinduet, og Tauri injicerer sit
+`__TAURI_INTERNALS__`-objekt ubetinget i dem alle. Det der afviser en fremmed side er
+Tauris egen kontrol af om origin er lokal: en side på `example.com` får ingen ACL og
+afvises ved kommando-dispatch. Men appens capability er målrettet **vinduet**, ikke den
+enkelte webview — så et kort der stod på appens *egen* origin ville være lokalt og få hele
+kommandofladen. Det ville være en eskalering forbi terminal-grænsen, altså præcis dét
+løftet siger ikke sker.
+
+Derfor afvises appens egne origins nu eksplicit — både når et kort oprettes og ved enhver
+senere navigation, inklusive redirects. Listen står i `browser_host.rs` som `APP_ORIGINS`
+og dækker både den bundlede app og dev-serveren; en test håndhæver at den ikke kan drifte
+fra `tauri.conf.json`.
+
+**Det er stadig ét lag, ikke to.** Et app-ACL-manifest med webview-scopede capabilities
+ville gøre grænsen strukturel frem for en allowlist. Det er ikke bygget — se de kendte
+svagheder nedenfor.
+
 ### Netværk
 
 Appen taler med de endpoints der står i `src-tauri/src/providers.rs`, og med de sider du
