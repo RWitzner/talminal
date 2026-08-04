@@ -18,6 +18,11 @@ import { cardLabel } from "./cardLabel";
 import { ContextBadge } from "./ContextBadge";
 import { nudgeRepaint } from "./nudge";
 import { hexDump, isBracketedPaste, isTerminalReply } from "./terminalReply";
+import {
+  TERMINAL_FONT_SIZE,
+  TERMINAL_FONT_STACK,
+  TERMINAL_LINE_HEIGHT,
+} from "./terminalFont";
 import { attachTerminalClipboard } from "./terminalClipboard";
 import { writeClipboardText } from "./clipboard";
 import {
@@ -250,10 +255,14 @@ export function Card({
     // i NORMAL-bufferen (D0-spiken), og uden scrollback konverterer xterm
     // hjulet til pil op/ned — som i codex' composer blader i tidligere
     // prompts. 2000 linjer giver codex rigtig rulning; CC er upaavirket.
+    // Font, stoerrelse og linjehoejde bor i terminalFont.ts: main.tsx skal
+    // kende familien for at kunne indlaese den FOER dette open() maaler
+    // cellen, og to kopier af de tal ville kunne drive fra hinanden i tavshed.
     const term = new Terminal({
       scrollback: 2000,
-      fontSize: 13,
-      fontFamily: "'Cascadia Mono', Consolas, monospace",
+      fontSize: TERMINAL_FONT_SIZE,
+      fontFamily: TERMINAL_FONT_STACK,
+      lineHeight: TERMINAL_LINE_HEIGHT,
       cursorBlink: true,
       theme: {
         background: "#02060c",

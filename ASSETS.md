@@ -106,6 +106,51 @@ det om sig selv, i stedet for at foregive at være urørt.
 
 Baggrundene indgår i produktet under samme vilkår som resten af repoet.
 
+## Terminalfonten — `src/assets/JetBrainsMonoNL-*.woff2`
+
+Terminalen sætter sin tekst i **JetBrains Mono**, ikke i en Windows-font. Den er bundlet,
+fordi Windows 11 reelt kun garanterer Cascadia Mono og Consolas, og begge er smallere og
+lavere end terminalen har brug for. Uden filerne her ville alle andre end den der
+tilfældigvis har fonten installeret falde tilbage til præcis det udgangspunkt bundlingen
+er til for at løse.
+
+### Rettighedsgrundlag
+
+JetBrains Mono er udgivet under **SIL Open Font License 1.1**. Licensteksten følger med i
+`src/assets/JetBrainsMono-OFL.txt`, sådan som OFL'en kræver. OFL tillader bundling og
+redistribution som del af et produkt — også kommercielt — så længe licensen følger med og
+fonten ikke sælges løsrevet for sig selv.
+
+**Reserved Font Name:** OFL'en reserverer navnet "JetBrains Mono". Der er ikke ændret
+noget i selve fonten, så reservationen er ikke i vejen her. Ændrer du derimod outlines
+eller tabeller, skal den afledte font hedde noget andet.
+
+### Filerne
+
+Konverteret fra den officielle **v2.304**-release
+(<https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304>). Releasen leverer
+`NL`-varianten som TTF men ikke som woff2, så filerne her er komprimeret med fontTools
+4.60.0 (`TTFont.flavor = "woff2"`). Det er en ren formatkonvertering — ingen glyffer,
+tabeller eller metrikker er rørt. Efterprøvet på de konverterede filer: 0,600 em
+cellebredde, 0,550 em x-højde, ingen `liga`/`calt`-features, fuld dækning af boks- og
+bloktegn.
+
+| Fil | Vægt | Bytes | SHA-256 (16) |
+|---|---|---|---|
+| `JetBrainsMonoNL-Regular.woff2` | 400 | 71948 | `bb56c897ef518add` |
+| `JetBrainsMonoNL-Bold.woff2` | 700 | 73288 | `d47d58370f22efdf` |
+| `JetBrainsMonoNL-Italic.woff2` | 400 kursiv | 75192 | `046c1afdfe18575f` |
+
+**Hvorfor `NL`-varianten** — JetBrains' egen "no ligatures"-udgave: den almindelige
+JetBrains Mono har ligaturer slået til, og xterms DomRenderer samler ens-stylede tegn i
+ét span uden at undertrykke dem. En ligatur kunne altså smelte to celler til én glyf og
+skubbe resten af linjen ud af gitteret. NL-varianten har ingen liga/calt-features
+overhovedet, så problemet findes ikke frem for at blive holdt nede af en CSS-regel nogen
+kan komme til at fjerne. Den fulde begrundelse står i `src/terminalFont.ts`.
+
+Fed og kursiv følger med fordi agenterne bruger begge dele. Uden dem ville browseren
+syntetisere dem, og syntetisk fed flyder ud over cellekanten i et monospace-gitter.
+
 ## Ikoner — `src-tauri/icons/`
 
 App-ikonerne er lavet til projektet og er dækket af [LICENSE](LICENSE) som resten af
