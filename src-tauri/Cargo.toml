@@ -1,6 +1,6 @@
 [package]
 name = "talminal-canvas"
-version = "0.1.0"
+version = "0.2.0"
 description = "Talminal - the sole pty owner: card grid hosting agent CLI workers"
 edition = "2021"
 # MSRV. Haandhaeves af rust-toolchain.toml i repo-roden, som pinner den
