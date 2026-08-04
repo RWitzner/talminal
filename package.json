@@ -21,8 +21,8 @@
     "README.md",
     "LICENSE",
     "NOTICE",
-    "ASSETS.md",
-    "LICENSE-JetBrainsMono.txt"
+    "docs/ASSETS.md",
+    "licenses/"
   ],
   "type": "module",
   "engines": {

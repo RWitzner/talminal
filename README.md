@@ -26,7 +26,7 @@ Kun til <img src="assets/windows11.svg" alt="Windows 11" width="98" height="18">
 <!--
 HERO: `assets/hero.png` — en genereret gengivelse af brugerfladen, ikke et
 skærmbillede. Proveniens, rettighedsgrundlag og hvad billedet indeholder står i
-ASSETS.md. Demo-GIF'en er der nu: `assets/demo.gif` under "Saadan virker det".
+docs/ASSETS.md. Demo-GIF'en er der nu: `assets/demo.gif` under "Saadan virker det".
 Den er en AEGTE optagelse — det er dén der viser hvordan appen faktisk opfoerer
 sig, mens heroen kun viser hvordan den ser ud.
 -->
@@ -307,7 +307,7 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 | [SECURITY.md](.github/SECURITY.md) | Trusselsmodellen og hvordan du rapporterer |
 | [PRIVACY.md](docs/PRIVACY.md) | Dataflow, retention, hvad der bliver liggende |
 | [SUPPORT.md](.github/SUPPORT.md) | Spørgsmål og de hyppigste årsager |
-| [ASSETS.md](ASSETS.md) | Medieaktiver og deres rettighedsgrundlag |
+| [ASSETS.md](docs/ASSETS.md) | Medieaktiver og deres rettighedsgrundlag |
 
 ## <img src="assets/sections/license.svg" width="26" align="absmiddle"> Licens
 
@@ -316,7 +316,7 @@ det du kommer til at savne, så du ikke bruger en aften på at lede efter det:
 **Lydklippene er undtaget.** De 15 ElevenLabs-genererede klip i `public/reply-clips/` og
 `src/assets/` er købt med kommerciel brugsret og **sublicenseres ikke** under Apache-2.0.
 Du kan regenerere dem under din egen konto med det medfølgende script. Se
-[ASSETS.md](ASSETS.md).
+[ASSETS.md](docs/ASSETS.md).
 
 ---
 

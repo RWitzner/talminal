@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import fixtures from "../../hotkey-grammar.fixtures.json";
+import fixtures from "./hotkey-grammar.fixtures.json";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

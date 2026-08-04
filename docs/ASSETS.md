@@ -1,7 +1,13 @@
 # Medieaktiver og deres rettighedsgrundlag
 
-Filen ligger i roden ved siden af [LICENSE](LICENSE) og [NOTICE](NOTICE), fordi det er
-dér en licenslæser kigger.
+Filen er registret over hvad der følger med i produktet ud over kildekoden, og på hvilket
+grundlag. [LICENSE](../LICENSE) og [NOTICE](../NOTICE) bliver i roden — de er projektets
+egen juridiske identitet, og GitHub aflæser dem dér. Tredjeparts-licenstekster ligger i
+[`licenses/`](../licenses/).
+
+Begge dele følger med i npm-tarballen. Det er ikke pyntelig oprydning: tarballen er sin
+egen distributionskanal, og en modtager der har binæren har også det der er indlejret i
+den.
 
 **Kildekoden er under Apache-2.0. Lydklippene er det ikke.** Læs afsnittet om ElevenLabs
 nedenfor, før du redistribuerer dem.
@@ -116,13 +122,14 @@ er til for at løse.
 
 ### Rettighedsgrundlag
 
-JetBrains Mono er udgivet under **SIL Open Font License 1.1**. Licensteksten følger med i
-[`LICENSE-JetBrainsMono.txt`](LICENSE-JetBrainsMono.txt) — i roden ved siden af
-[LICENSE](LICENSE), og **med i npm-tarballen**, fordi fonten distribueres indlejret i
-`talminal-canvas.exe`. En modtager af pakken har altså fonten, og så skal licensen være
-der også. OFL tillader bundling og
-redistribution som del af et produkt — også kommercielt — så længe licensen følger med og
-fonten ikke sælges løsrevet for sig selv.
+JetBrains Mono er udgivet under **SIL Open Font License 1.1**. Licensteksten ligger i
+[`licenses/JetBrainsMono-OFL.txt`](../licenses/JetBrainsMono-OFL.txt) og **følger med i
+npm-tarballen**. Det er ikke valgfrit: fonten distribueres indlejret i
+`talminal-canvas.exe`, så enhver der har pakken har også fonten — og så skal licensen
+være der.
+
+OFL tillader bundling og redistribution som del af et produkt, også kommercielt, så længe
+licensen følger med og fonten ikke sælges løsrevet for sig selv.
 
 **Reserved Font Name:** OFL'en reserverer navnet "JetBrains Mono". Der er ikke ændret
 noget i selve fonten, så reservationen er ikke i vejen her. Ændrer du derimod outlines
@@ -156,19 +163,19 @@ syntetisere dem, og syntetisk fed flyder ud over cellekanten i et monospace-gitt
 
 ## Ikoner — `src-tauri/icons/`
 
-App-ikonerne er lavet til projektet og er dækket af [LICENSE](LICENSE) som resten af
+App-ikonerne er lavet til projektet og er dækket af [LICENSE](../LICENSE) som resten af
 repoet.
 
 ## README-hero — `assets/hero.png`
 
-1672×941 PNG. Sidder øverst i [README.md](README.md).
+1672×941 PNG. Sidder øverst i [README.md](../README.md).
 
 - Motor: **gpt-image 2.0** (OpenAI Media Service API)
 - Genereret: 2026-08-03
 - C2PA: **bevaret i filen** (31 forekomster). Billedet er kopieret råt ind i repoet —
   ingen beskæring, ingen resize, ingen re-encode. Derfor validerer manifesten stadig, og
   proveniensen kan læses af filen selv frem for kun af denne optegnelse.
-- Rettighedsgrundlag: genereret til projektet, dækket af [LICENSE](LICENSE) som resten af
+- Rettighedsgrundlag: genereret til projektet, dækket af [LICENSE](../LICENSE) som resten af
   repoet.
 
 **Billedet er en genereret gengivelse af brugerfladen — ikke et skærmbillede.** Modellen
@@ -185,13 +192,13 @@ næste der kigger ved at det er vejet og ikke overset:
 
 - Ejerens hjemmemappe-sti (`C:\Users\x\talminal` — her med repoets neutrale pladsholder)
   i titelbjælken, og fornavn i begge Claude-kort. Navnet står i forvejen i
-  [NOTICE](NOTICE) og `package.json` — Apache-2.0 kræver tilskrivning.
+  [NOTICE](../NOTICE) og `package.json` — Apache-2.0 kræver tilskrivning.
 - Abonnementsniveau (`Claude Max`), kontotilstand (*"3 usage limit resets available"*) og
   en konkret `PR #12`. Alt sammen uden betydning for en udenforstående.
 - En advarsel om en MCP-server der mangler autentificering, og `permissions: YOLO mode` i
   Codex-kortet. **Det sidste er værd at kende:** billedet viser en agent der kører med
   tilladelser slået fra. Det er brugerens egen codex-opsætning — Talminal sender ingen
-  tilladelses-flag, og [SECURITY.md](.github/SECURITY.md) siger det ligeud — men det er altså ikke
+  tilladelses-flag, og [SECURITY.md](../.github/SECURITY.md) siger det ligeud — men det er altså ikke
   en anbefaling, det er et øjebliksbillede af én maskine.
 
 Skiftes billedet ud, opdateres denne liste i samme pull request.
@@ -199,7 +206,7 @@ Skiftes billedet ud, opdateres denne liste i samme pull request.
 ## Demo-optagelsen — `assets/demo.gif`
 
 880×548 GIF, 72 frames ved 12 fps, seks sekunder, 1,7 MB.
-SHA-256 (16) `603d41c60864b9cc`. Sidder øverst i [README.md](README.md)s afsnit
+SHA-256 (16) `603d41c60864b9cc`. Sidder øverst i [README.md](../README.md)s afsnit
 *"Sådan virker det"*.
 
 **Det her er en ægte optagelse af den kørende app** — modsat heroen. Ejerens egen
@@ -225,13 +232,13 @@ ved at det er vejet:
 - Abonnementsniveau (`Claude Max`) og en advarsel om en MCP-server der mangler
   autentificering. Begge dele står i forvejen i hero-billedet, med samme begrundelse.
 
-Rettighedsgrundlag: optaget af ejeren til projektet, dækket af [LICENSE](LICENSE).
+Rettighedsgrundlag: optaget af ejeren til projektet, dækket af [LICENSE](../LICENSE).
 
 Skiftes optagelsen ud, opdateres denne liste i samme pull request.
 
 ## READMEens ikoner — `assets/sections/*.svg`
 
-Ni håndtegnede SVG'er lavet til projektet, dækket af [LICENSE](LICENSE) som resten af
+Ni håndtegnede SVG'er lavet til projektet, dækket af [LICENSE](../LICENSE) som resten af
 repoet. Ingen generator, intet bibliotek, ingen tredjepartskilde.
 
 `sections/{how,install,req,keys,hud,warn,todo,docs,license}.svg` — ét ikon pr.
@@ -254,7 +261,7 @@ blev lagt ind.
 
 ## HUD-udsnit — `assets/hud.png`
 
-231×67 PNG, 13687 B, SHA-256 (16) `1a35a2d94942e5ac`. Sidder i [README.md](README.md)s
+231×67 PNG, 13687 B, SHA-256 (16) `1a35a2d94942e5ac`. Sidder i [README.md](../README.md)s
 afsnit om statusline-tap'en.
 
 **Det her er et ægte skærmbillede** — modsat heroen ovenfor. Udsnit af den kørende app,
@@ -265,12 +272,12 @@ og uge-vinduet, med procent og resttid. Tallene er ejerens eget Claude Code-forb
 øjeblik billedet blev taget — de siger intet om hvad du selv vil se.
 
 Billedet er saniteret ved at være et udsnit: der er ingen stier, navne, mailadresser eller
-projektdata i det. Rettighedsgrundlag: lavet til projektet, dækket af [LICENSE](LICENSE)
+projektdata i det. Rettighedsgrundlag: lavet til projektet, dækket af [LICENSE](../LICENSE)
 som resten af repoet.
 
 ## Windows 11-logoet — `assets/windows11.svg`
 
-Sidder i [README.md](README.md)s undertitel efter ordene *"Kun til"*. Det er hele
+Sidder i [README.md](../README.md)s undertitel efter ordene *"Kun til"*. Det er hele
 wordmark'et — de fire firkanter og skrifttrækket *Windows 11* som vektorpaths.
 
 - Kilde: [Wikimedia Commons, `Windows_11_logo.svg`](https://commons.wikimedia.org/wiki/File:Windows_11_logo.svg)

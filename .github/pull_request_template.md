@@ -35,7 +35,7 @@ Appen var lukket under kørslen: <!-- ja / nej -->
 - [ ] Rører ændringen dataflowet, er [PRIVACY.md](https://github.com/RWitzner/talminal/blob/main/PRIVACY.md) opdateret i
       samme PR
 - [ ] Tilføjer den et medieaktiv, står proveniensen i
-      [ASSETS.md](https://github.com/RWitzner/talminal/blob/main/ASSETS.md)
+      [ASSETS.md](https://github.com/RWitzner/talminal/blob/main/docs/ASSETS.md)
 
 ## Licens
 

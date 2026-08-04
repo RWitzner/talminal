@@ -41,31 +41,36 @@ describe('npm-pakkens form', () => {
   it('files er en allowlist der baerer binaererne og deres rettighedsgrundlag', () => {
     expect(pkg.files).toContain('vendor/')
     expect(pkg.files).toContain('bin/')
-    // NOTICE og ASSETS.md skal med: tarballen er sin egen
+    // NOTICE og docs/ASSETS.md skal med: tarballen er sin egen
     // distributionskanal, og ASSETS.md er lydklippenes eneste grant.
     //
-    // LICENSE-JetBrainsMono.txt af samme grund, men for fonten: den er
-    // BUNDLET og ligger indlejret i talminal-canvas.exe, saa enhver der har
-    // tarballen har ogsaa fonten. SIL OFL 1.1 kraever at licensteksten
-    // foelger med kopier af fonten — og indtil 0.2.0 gjorde den det ikke,
-    // selv om ASSETS.md henviste til den. En henvisning til en fil
-    // modtageren ikke har er ingen licensopfyldelse.
+    // `licenses/` af samme grund, men for tredjeparts-tekster. JetBrains Mono
+    // er BUNDLET og ligger indlejret i talminal-canvas.exe, saa enhver der har
+    // tarballen har ogsaa fonten. SIL OFL 1.1 kraever at licensteksten foelger
+    // med kopier af fonten — og indtil 0.2.0 gjorde den det ikke, selv om
+    // ASSETS.md henviste til den. En henvisning til en fil modtageren ikke har
+    // er ingen licensopfyldelse.
+    //
+    // Mappen og ikke den enkelte fil: naeste bundlede aktiv med egne vilkaar
+    // skal kunne laegges i `licenses/` og foelge med af sig selv. Testen
+    // nedenfor daekker at DEN fil vi har i dag rent faktisk er der.
     for (const f of [
       'README.md',
       'LICENSE',
       'NOTICE',
-      'ASSETS.md',
-      'LICENSE-JetBrainsMono.txt',
+      'docs/ASSETS.md',
+      'licenses/',
     ]) {
       expect(pkg.files).toContain(f)
     }
   })
 
-  // Filen skal ikke bare staa i allowlisten — den skal FINDES, og den skal
-  // vaere OFL'en. En tom eller omdoebt fil ville bestaa testen ovenfor og
-  // stadig efterlade pakken uden licensgrundlag for fonten.
+  // Filen skal ikke bare vaere daekket af allowlisten — den skal FINDES, og
+  // den skal vaere OFL'en. En tom eller omdoebt fil ville bestaa testen
+  // ovenfor (mappen er jo med) og stadig efterlade pakken uden
+  // licensgrundlag for fonten.
   it('fontens licenstekst findes og er OFL 1.1', () => {
-    const ofl = read('LICENSE-JetBrainsMono.txt')
+    const ofl = read('licenses/JetBrainsMono-OFL.txt')
     expect(ofl).toMatch(/Copyright .* The JetBrains Mono Project Authors/)
     expect(ofl).toMatch(/SIL Open Font License, Version 1\.1/)
   })
