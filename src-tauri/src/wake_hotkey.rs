@@ -342,6 +342,17 @@ pub struct PollSnapshot {
     pub window_focused: bool,
 }
 
+impl PollSnapshot {
+    /// Modifier-/fokus-delen er faelles for alle slots; kun triggeren er
+    /// pr. slot. Se `read_shared_snapshot`.
+    pub fn with_trigger(self, trigger_down: bool) -> Self {
+        PollSnapshot {
+            trigger_down,
+            ..self
+        }
+    }
+}
+
 /// Kant-detektion af niveau (redapting-porten). Hold-tilstanden foelger den
 /// FYSISKE trigger-tast; kombo + fokus evalueres NIVEAU-baseret gennem hele
 /// det uarmerede hold — IKKE kun i kant-pollet (fix 2026-07-20: ved samtidigt
@@ -399,6 +410,27 @@ fn combo_matches(combo: &KeyCombo, snapshot: &PollSnapshot) -> bool {
             && (!combo.shift || snapshot.shift)
             && (!combo.alt || snapshot.alt)
     }
+}
+
+/// Kan ÉT fysisk tastetryk fyre begge genveje?
+///
+/// Reglen foelger direkte af `combo_matches`' subset-semantik, og den er
+/// derfor IKKE "er de to ens": `Ctrl+Space` og `Ctrl+Shift+Space` er
+/// forskellige `KeyCombo`er, men et Ctrl+Shift+Space-tryk matcher dem BEGGE —
+/// den foerste kraever kun at Ctrl er nede og er ligeglad med Shift.
+///
+/// | Samme trigger | Modifiers                | Kolliderer |
+/// |---|---|---|
+/// | nej | — | nej |
+/// | ja | begge bare | ja (de er identiske) |
+/// | ja | begge navngiver modifiers | ja — unionen af dem matcher begge |
+/// | ja | een bar, een med modifiers | nej — en bar kombo kraever at INGEN modifier er nede |
+///
+/// Sammenfattet: to genveje kolliderer praecis naar de deler trigger-tast og
+/// er enige om hvorvidt de har modifiers. Det er ogsaa den formulering
+/// brugeren faar at se — "de to genveje maa ikke bruge samme tast".
+pub fn collides(a: &KeyCombo, b: &KeyCombo) -> bool {
+    a.trigger == b.trigger && a.is_bare() == b.is_bare()
 }
 
 impl ComboEdgeDetector {
@@ -469,33 +501,90 @@ impl ComboEdgeDetector {
     }
 }
 
+// --- Slots ------------------------------------------------------------------
+
+/// Antal uafhaengige genveje polleren holder.
+pub const SLOT_COUNT: usize = 2;
+
+/// De to genveje polleren kan fyre. Hver slot har sin EGEN kant-detektor,
+/// vk-cache og versions-taeller — de deler kun mikrofonen, og det ejerskab
+/// afgoeres i frontenden, ikke her.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HotkeySlot {
+    /// Push-to-talk: hele stemme-pipelinen (STT -> router -> dispatch).
+    Ptt,
+    /// Diktering: STT direkte ind i det fokuserede korts composer.
+    Dictation,
+}
+
+impl HotkeySlot {
+    pub const ALL: [HotkeySlot; SLOT_COUNT] = [HotkeySlot::Ptt, HotkeySlot::Dictation];
+
+    fn index(self) -> usize {
+        self as usize
+    }
+
+    /// Wire-navnet i `WAKE_EVENT`-payloaden. Frontenden router paa det, saa
+    /// vaerdierne er kontrakt: aendres de, holder App.tsx op med at hoere efter.
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            HotkeySlot::Ptt => "ptt",
+            HotkeySlot::Dictation => "dictation",
+        }
+    }
+
+    /// Brugervendt dansk navn — bruges i layout-advarslen, som naar helt ud i
+    /// indstillingerne via `settings_warning`.
+    fn label(self) -> &'static str {
+        match self {
+            HotkeySlot::Ptt => "stemme-aktiveringen",
+            HotkeySlot::Dictation => "dikteringen",
+        }
+    }
+}
+
 // --- Delt tilstand (kommando-traad skriver, poller-traad laeser) ------------
 
-static COMBO: Mutex<Option<KeyCombo>> = Mutex::new(None);
+static COMBOS: Mutex<[Option<KeyCombo>; SLOT_COUNT]> = Mutex::new([None; SLOT_COUNT]);
 /// Bumpes ved hver accelerator-aendring: polleren nulstiller sin kant-tilstand
 /// saa et hold paatvunget over en konfigurations-aendring ikke fyrer forkert.
-static COMBO_VERSION: AtomicU64 = AtomicU64::new(0);
+///
+/// EEN TAELLER PR. SLOT, og det er ikke kosmetik: `reset()` saetter
+/// `suppress_until_keyup`, saa en faelles taeller ville lade en aendring af den
+/// ene genvej sluge release-kanten paa et IGANGVAERENDE hold i den anden.
+/// Frontenden ville aldrig faa sit release, og mikrofonen stod aaben.
+static COMBO_VERSIONS: [AtomicU64; SLOT_COUNT] = [AtomicU64::new(0), AtomicU64::new(0)];
+/// Faelles for begge slots: `HotkeyRecorder` suspenderer mens brugeren optager
+/// en NY genvej, og da skal ingen af dem fyre.
 static SUSPENDED: AtomicBool = AtomicBool::new(false);
 /// Talminal-vinduets HWND (sat ved setup). Fokus-gaten sammenligner det med
 /// GetForegroundWindow pr. poll — 0 = ukendt = gate lukket (fail-closed).
 static WINDOW_HWND: AtomicIsize = AtomicIsize::new(0);
 static POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 
-/// Saet (eller udskift) den aktive accelerator. Parse-fejl rapporteres til
+/// Saet (eller udskift) en slots accelerator. Parse-fejl rapporteres til
 /// kalderen (frontenden viser den i HUD'et) — aldrig lydloes (redapting
 /// review-fund #17/#47: "hotkeys virker bare ikke" uden fejl er usynligt).
-pub fn set_accelerator(accel: &str) -> Result<(), String> {
+///
+/// At suspensionen ryddes er BEVIDST (testet nedenfor): kommandoen kaldes ved
+/// hver mount, og det er den vej en suspension der blev haengende — fordi
+/// indstillingsvinduet forsvandt midt i en optagelse — bliver helet igen.
+pub fn set_accelerator(slot: HotkeySlot, accel: &str) -> Result<(), String> {
     let combo = parse_accelerator(accel)?;
-    let mut slot = COMBO.lock().map_err(|e| e.to_string())?;
-    *slot = Some(combo);
-    COMBO_VERSION.fetch_add(1, Ordering::Release);
+    let mut slots = COMBOS.lock().map_err(|e| e.to_string())?;
+    slots[slot.index()] = Some(combo);
+    COMBO_VERSIONS[slot.index()].fetch_add(1, Ordering::Release);
     SUSPENDED.store(false, Ordering::Release);
     Ok(())
 }
 
 pub fn set_suspended(suspended: bool) {
     SUSPENDED.store(suspended, Ordering::Release);
-    COMBO_VERSION.fetch_add(1, Ordering::Release);
+    // Begge detektorer nulstilles: et hold der spaender hen over suspensionen
+    // maa ikke fyre naar den ophaeves — uanset hvilken genvej det var.
+    for version in &COMBO_VERSIONS {
+        version.fetch_add(1, Ordering::Release);
+    }
 }
 
 pub fn is_suspended() -> bool {
@@ -555,8 +644,13 @@ impl VkResolver for Win32Resolver {
     }
 }
 
+/// Modifier- og fokus-delen, som ALLE slots deler. Laeses een gang pr. poll:
+/// med to slots ville et snapshot pr. slot koste seks ekstra GetAsyncKeyState
+/// og et ekstra GetForegroundWindow hvert 5. ms uden at kunne give et andet
+/// svar — de fysiske modifiers er jo de samme for begge genveje.
+/// `trigger_down` staar `false` her og saettes pr. slot af `with_trigger`.
 #[cfg(windows)]
-fn read_snapshot(trigger_vk: u16) -> PollSnapshot {
+fn read_shared_snapshot() -> PollSnapshot {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         VK_CONTROL, VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN, VK_SHIFT,
     };
@@ -565,7 +659,7 @@ fn read_snapshot(trigger_vk: u16) -> PollSnapshot {
         shift: is_vk_down(VK_SHIFT),
         alt: is_vk_down(VK_MENU),
         right_alt: is_vk_down(VK_RMENU),
-        trigger_down: trigger_vk != 0 && is_vk_down(trigger_vk),
+        trigger_down: false,
         window_focused: foreground_is_canvas(),
     }
 }
@@ -592,77 +686,101 @@ pub fn spawn_wake_poller(app: AppHandle) {
             unsafe {
                 windows_sys::Win32::Media::timeBeginPeriod(1);
             }
-            let mut detector = ComboEdgeDetector::default();
-            let mut vk_cache = TriggerVkCache::default();
-            let mut seen_version = COMBO_VERSION.load(Ordering::Acquire);
+            let mut detectors: [ComboEdgeDetector; SLOT_COUNT] = Default::default();
+            let mut vk_caches: [TriggerVkCache; SLOT_COUNT] = Default::default();
+            let mut seen_versions =
+                HotkeySlot::ALL.map(|slot| COMBO_VERSIONS[slot.index()].load(Ordering::Acquire));
             loop {
                 thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                let version = COMBO_VERSION.load(Ordering::Acquire);
-                if version != seen_version {
-                    seen_version = version;
-                    detector.reset();
-                    vk_cache = TriggerVkCache::default();
+                // Versions-tjekket ligger FOER suspensions-gaten, praecis som
+                // da der kun var een slot: `set_suspended` bumper selv, saa
+                // nulstillingen skal naa detektoren ogsaa naar vi er tavse.
+                for slot in HotkeySlot::ALL {
+                    let i = slot.index();
+                    let version = COMBO_VERSIONS[i].load(Ordering::Acquire);
+                    if version != seen_versions[i] {
+                        seen_versions[i] = version;
+                        detectors[i].reset();
+                        vk_caches[i] = TriggerVkCache::default();
+                    }
                 }
                 if SUSPENDED.load(Ordering::Acquire) {
                     continue;
                 }
-                let combo = match COMBO.lock() {
-                    Ok(slot) => *slot,
+                let combos = match COMBOS.lock() {
+                    Ok(slots) => *slots,
                     Err(_) => continue,
                 };
-                let Some(combo) = combo else { continue };
-                let (trigger_vk, warning) = vk_cache.vk_for(&combo.trigger, &Win32Resolver);
-                if let Some(warning) = warning {
-                    eprintln!("[wake-hotkey] {warning}");
-                    publish_layout_warning(warning);
+                if combos.iter().all(Option::is_none) {
+                    continue;
                 }
-                let snapshot = read_snapshot(trigger_vk);
-                match detector.step(&combo, &snapshot) {
-                    Step::Press => {
-                        crate::perf_mark_background!(
-                            "voice.ptt.press_sampled",
-                            serde_json::json!({ "poll_interval_ms": POLL_INTERVAL_MS }),
-                        );
-                        let _ = app.emit(
-                            WAKE_EVENT,
-                            WakeHotkeyEvent {
-                                combo: "ptt",
-                                edge: "press",
-                            },
-                        );
+                let shared = read_shared_snapshot();
+                for slot in HotkeySlot::ALL {
+                    let i = slot.index();
+                    let Some(combo) = combos[i] else { continue };
+                    let (trigger_vk, warning) = vk_caches[i].vk_for(&combo.trigger, &Win32Resolver);
+                    if let Some(warning) = warning {
+                        let named = format!("{}: {warning}", slot.label());
+                        eprintln!("[wake-hotkey/{}] {warning}", slot.wire_name());
+                        publish_layout_warning(named);
                     }
-                    Step::Release => {
-                        crate::perf_mark_background!(
-                            "voice.ptt.release_sampled",
-                            serde_json::json!({ "poll_interval_ms": POLL_INTERVAL_MS }),
-                        );
-                        let _ = app.emit(
-                            WAKE_EVENT,
-                            WakeHotkeyEvent {
-                                combo: "ptt",
-                                edge: "release",
-                            },
-                        );
+                    let snapshot = shared.with_trigger(trigger_vk != 0 && is_vk_down(trigger_vk));
+                    match detectors[i].step(&combo, &snapshot) {
+                        Step::Press => {
+                            crate::perf_mark_background!(
+                                "voice.ptt.press_sampled",
+                                serde_json::json!({
+                                    "poll_interval_ms": POLL_INTERVAL_MS,
+                                    "slot": slot.wire_name(),
+                                }),
+                            );
+                            let _ = app.emit(
+                                WAKE_EVENT,
+                                WakeHotkeyEvent {
+                                    combo: slot.wire_name(),
+                                    edge: "press",
+                                },
+                            );
+                        }
+                        Step::Release => {
+                            crate::perf_mark_background!(
+                                "voice.ptt.release_sampled",
+                                serde_json::json!({
+                                    "poll_interval_ms": POLL_INTERVAL_MS,
+                                    "slot": slot.wire_name(),
+                                }),
+                            );
+                            let _ = app.emit(
+                                WAKE_EVENT,
+                                WakeHotkeyEvent {
+                                    combo: slot.wire_name(),
+                                    edge: "release",
+                                },
+                            );
+                        }
+                        Step::SuppressedUnfocused => {
+                            // Doede-tryk-diagnostik: rigtigt kombo-tryk, gate
+                            // lukket. Ses denne samtidig med at brugeren kigger
+                            // paa canvas, er fokus-maalingen forkert.
+                            eprintln!(
+                                "[wake-hotkey/{}] kombo-tryk set, men canvas er ikke forgrundsvindue — kanten kasseret",
+                                slot.wire_name()
+                            );
+                        }
+                        Step::SuppressedAltGr => {
+                            eprintln!(
+                                "[wake-hotkey/{}] kombo-tryk set, men hoejre Alt (AltGr) er nede — kanten kasseret",
+                                slot.wire_name()
+                            );
+                        }
+                        Step::SuppressedModifierDown => {
+                            eprintln!(
+                                "[wake-hotkey/{}] bar binding: trigger nede, men en modifier diskvalificerede det eksakte match",
+                                slot.wire_name()
+                            );
+                        }
+                        Step::SuppressedUnfocusedQuiet | Step::None => {}
                     }
-                    Step::SuppressedUnfocused => {
-                        // Doede-tryk-diagnostik: rigtigt kombo-tryk, gate
-                        // lukket. Ses denne samtidig med at brugeren kigger
-                        // paa canvas, er fokus-maalingen forkert.
-                        eprintln!(
-                            "[wake-hotkey] kombo-tryk set, men canvas er ikke forgrundsvindue — kanten kasseret"
-                        );
-                    }
-                    Step::SuppressedAltGr => {
-                        eprintln!(
-                            "[wake-hotkey] kombo-tryk set, men hoejre Alt (AltGr) er nede — kanten kasseret"
-                        );
-                    }
-                    Step::SuppressedModifierDown => {
-                        eprintln!(
-                            "[wake-hotkey] bar binding: trigger nede, men en modifier diskvalificerede det eksakte match"
-                        );
-                    }
-                    Step::SuppressedUnfocusedQuiet | Step::None => {}
                 }
             }
         })
@@ -1132,41 +1250,131 @@ mod tests {
     #[test]
     fn wake_hotkey_payload_has_combo_and_edge_wire_format() {
         let press = serde_json::to_value(WakeHotkeyEvent {
-            combo: "ptt",
+            combo: HotkeySlot::Ptt.wire_name(),
             edge: "press",
         })
         .expect("serialize press payload");
         let release = serde_json::to_value(WakeHotkeyEvent {
-            combo: "ptt",
+            combo: HotkeySlot::Dictation.wire_name(),
             edge: "release",
         })
         .expect("serialize release payload");
         assert_eq!(press, serde_json::json!({"combo": "ptt", "edge": "press"}));
         assert_eq!(
             release,
-            serde_json::json!({"combo": "ptt", "edge": "release"})
+            serde_json::json!({"combo": "dictation", "edge": "release"})
         );
+    }
+
+    /// COMBOS/COMBO_VERSIONS/SUSPENDED er proces-globale, og cargo koerer
+    /// tests i traade i SAMME proces. Uden en faelles laas ville testene
+    /// nedenfor lekke ind i hinanden — praecis den slags flakiness der er
+    /// dyrest at fejlfinde. (Datamappe-vagten loeser det samme problem for
+    /// integrationstestene med `common::serial()`.)
+    static GLOBAL_STATE: Mutex<()> = Mutex::new(());
+
+    fn with_global_state<T>(body: impl FnOnce() -> T) -> T {
+        let guard = GLOBAL_STATE.lock().unwrap_or_else(|e| e.into_inner());
+        let out = body();
+        set_accelerator(HotkeySlot::Ptt, crate::workspace::DEFAULT_PTT_HOTKEY).expect("reset ptt");
+        set_accelerator(
+            HotkeySlot::Dictation,
+            crate::workspace::DEFAULT_DICTATION_HOTKEY,
+        )
+        .expect("reset dictation");
+        drop(guard);
+        out
     }
 
     #[test]
     fn set_accelerator_rejects_parse_errors() {
-        assert!(set_accelerator("ikke-en-accelerator").is_err());
-        assert!(set_accelerator("Ctrl+Shift+Space").is_ok());
+        with_global_state(|| {
+            assert!(set_accelerator(HotkeySlot::Ptt, "ikke-en-accelerator").is_err());
+            assert!(set_accelerator(HotkeySlot::Ptt, "Ctrl+Shift+Space").is_ok());
+            assert!(set_accelerator(HotkeySlot::Dictation, "Ctrl+Shift+KeyD").is_ok());
+        });
     }
 
     #[test]
-    fn suspension_er_ortogonal_til_set_accelerator() {
-        let before = COMBO_VERSION.load(Ordering::Acquire);
-        set_suspended(true);
-        let during = COMBO_VERSION.load(Ordering::Acquire);
-        assert!(during > before);
-        assert!(is_suspended());
-        set_accelerator("Alt+KeyQ").expect("set under suspension");
-        assert!(!is_suspended());
-        let after = COMBO_VERSION.load(Ordering::Acquire);
-        assert!(after > during);
-        let combo = COMBO.lock().expect("lock").expect("combo");
-        assert_eq!(combo.trigger.code(), "KeyQ");
-        set_accelerator(crate::workspace::DEFAULT_PTT_HOTKEY).expect("reset");
+    fn de_to_slots_holder_hver_sin_kombo() {
+        with_global_state(|| {
+            set_accelerator(HotkeySlot::Ptt, "Ctrl+Shift+Space").expect("ptt");
+            set_accelerator(HotkeySlot::Dictation, "Ctrl+Shift+KeyD").expect("dictation");
+            let slots = *COMBOS.lock().expect("lock");
+            assert_eq!(
+                slots[HotkeySlot::Ptt.index()]
+                    .expect("ptt-kombo")
+                    .trigger
+                    .code(),
+                "Space"
+            );
+            assert_eq!(
+                slots[HotkeySlot::Dictation.index()]
+                    .expect("dikterings-kombo")
+                    .trigger
+                    .code(),
+                "KeyD"
+            );
+        });
+    }
+
+    #[test]
+    fn versionstaelleren_er_pr_slot() {
+        // Regressionsvaern: med EEN faelles taeller ville en aendring af den
+        // ene genvej kalde reset() paa den ANDENS detektor. reset() saetter
+        // suppress_until_keyup, saa et igangvaerende hold ville miste sin
+        // release-kant — frontenden fik aldrig sit release, og mikrofonen
+        // stod aaben indtil brugeren trykkede forfra.
+        with_global_state(|| {
+            let before = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            set_accelerator(HotkeySlot::Ptt, "Alt+KeyQ").expect("ptt");
+            let after = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            assert!(
+                after[HotkeySlot::Ptt.index()] > before[HotkeySlot::Ptt.index()],
+                "ptt-slotten skal bumpe sin egen taeller"
+            );
+            assert_eq!(
+                after[HotkeySlot::Dictation.index()],
+                before[HotkeySlot::Dictation.index()],
+                "en ptt-aendring maa ikke nulstille dikterings-detektoren"
+            );
+        });
+    }
+
+    #[test]
+    fn suspension_nulstiller_begge_slots() {
+        with_global_state(|| {
+            let before = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            set_suspended(true);
+            assert!(is_suspended());
+            let during = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            for slot in HotkeySlot::ALL {
+                assert!(
+                    during[slot.index()] > before[slot.index()],
+                    "{} skal nulstilles af en suspension",
+                    slot.wire_name()
+                );
+            }
+            // Suspensionen ryddes bevidst af set_accelerator (mount heler et
+            // haengende indstillingsvindue) — og nu fra BEGGE kommandoer.
+            set_accelerator(HotkeySlot::Dictation, "Alt+KeyQ").expect("set under suspension");
+            assert!(!is_suspended());
+        });
+    }
+
+    #[test]
+    fn kollision_er_delt_trigger_ikke_lighed() {
+        let p = |a: &str| parse_accelerator(a).expect(a);
+        // Subset-fælden: ét Ctrl+Shift+Space-tryk matcher BEGGE.
+        assert!(collides(&p("Ctrl+Space"), &p("Ctrl+Shift+Space")));
+        assert!(collides(&p("Ctrl+Shift+Space"), &p("Ctrl+Shift+Space")));
+        assert!(collides(&p("Ctrl+Space"), &p("Alt+Space")));
+        assert!(collides(&p("F9"), &p("F9")));
+        // Forskellig trigger: kan aldrig fyre samtidig.
+        assert!(!collides(&p("Ctrl+Shift+Space"), &p("Ctrl+Shift+KeyD")));
+        assert!(!collides(&p("F9"), &p("F10")));
+        // Bar mod ikke-bar paa samme tast: den bare kraever at INGEN modifier
+        // er nede, saa intet enkelt tryk kan opfylde dem begge.
+        assert!(!collides(&p("F9"), &p("Ctrl+F9")));
     }
 }

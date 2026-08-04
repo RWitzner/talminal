@@ -13,7 +13,7 @@ import Settings from "./Settings";
 let container: HTMLDivElement;
 let root: Root;
 
-function mockWorkspace(settings: Record<string, string>) {
+function mockWorkspace(settings: Record<string, string | boolean>) {
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === "get_workspace") {
       return {
@@ -90,4 +90,86 @@ it("viser Mouse4-dobbeltvirkningen uden at blokere", async () => {
     "[data-hotkey-change]",
   );
   expect(change?.disabled).toBe(false);
+});
+
+// --- Diktering -------------------------------------------------------------
+
+function savedSettings(): Record<string, unknown> {
+  const calls = mocks.invoke.mock.calls.filter(
+    (call: unknown[]) => call[0] === "set_settings",
+  );
+  const last = calls[calls.length - 1];
+  if (!last) throw new Error("set_settings blev aldrig kaldt");
+  return (last[1] as { settings: Record<string, unknown> }).settings;
+}
+
+it("dikteringen har sin egen genvej og sin egen kontakt", async () => {
+  await mount();
+  expect(container.textContent).toContain("Diktering");
+  expect(container.querySelectorAll("[data-hotkey-change]").length).toBe(2);
+  expect(container.querySelector("[data-dictation-submit]")).not.toBeNull();
+});
+
+it("auto-send er slaaet fra som udgangspunkt og siger hvad den goer", async () => {
+  await mount();
+  const toggle = container.querySelector<HTMLInputElement>(
+    "[data-dictation-submit]",
+  );
+  expect(toggle?.checked).toBe(false);
+  // Konsekvensen skal staa der — ikke kun loeftet om fart.
+  expect(container.textContent).toContain("også hvis den blev hørt forkert");
+});
+
+it("kontakten gemmer auto-send", async () => {
+  await mount();
+  const toggle = container.querySelector<HTMLInputElement>(
+    "[data-dictation-submit]",
+  )!;
+  // click() og ikke et sat .checked: React binder checkboxes' onChange til
+  // click-eventet, saa en manuelt sat property fyrer ingen handler.
+  act(() => toggle.click());
+  await act(async () => {});
+  expect(savedSettings().dictation_submit).toBe(true);
+});
+
+it("en gemt kontakt paa true kan slaas FRA igen", async () => {
+  // `??` og ikke `||` i saveSettingsPatch: med `||` ville `false` falde
+  // igennem til den gemte `true`, og kontakten kunne aldrig slukkes.
+  mockWorkspace({ dictation_submit: true });
+  await mount();
+  const toggle = container.querySelector<HTMLInputElement>(
+    "[data-dictation-submit]",
+  )!;
+  expect(toggle.checked).toBe(true);
+  act(() => toggle.click());
+  await act(async () => {});
+  expect(savedSettings().dictation_submit).toBe(false);
+});
+
+it("ENHVER gem-vej sender ogsaa dikterings-felterne", async () => {
+  // Regressionsvaern for `deny_unknown_fields` paa Rust-sidens SettingsInput:
+  // udelades ét felt, fejler ALLE settings-gem — ikke kun dikteringens.
+  await mount();
+  const reset = container.querySelector<HTMLButtonElement>(
+    "[data-hotkey-reset]",
+  )!;
+  act(() => reset.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  await act(async () => {});
+  const settings = savedSettings();
+  expect(settings.dictation_hotkey).toBe("CmdOrCtrl+Shift+KeyD");
+  expect(settings.dictation_submit).toBe(false);
+});
+
+it("nulstil paa diktér-optageren skriver dens egen standard", async () => {
+  mockWorkspace({ dictation_hotkey: "Alt+KeyM" });
+  await mount();
+  // Anden optager i "voice"-kategorien er dikteringens.
+  const resets = container.querySelectorAll<HTMLButtonElement>(
+    "[data-hotkey-reset]",
+  );
+  act(() =>
+    resets[1].dispatchEvent(new MouseEvent("click", { bubbles: true })),
+  );
+  await act(async () => {});
+  expect(savedSettings().dictation_hotkey).toBe("CmdOrCtrl+Shift+KeyD");
 });

@@ -572,6 +572,71 @@ describe("ChatCard", () => {
     expect(vi.mocked(invoke).mock.calls.length).toBe(before);
   });
 
+  async function dictate(
+    detail: { name: string; text: string; submit: boolean },
+  ): Promise<void> {
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("talminal:dictation-insert", { detail }),
+      );
+      await Promise.resolve();
+    });
+  }
+
+  it("diktering lander i kladden uden at sende", async () => {
+    await render();
+    const input = host.querySelector<HTMLTextAreaElement>("[data-chat-input]")!;
+    await dictate({ name: "card-3", text: "hold jer til v1", submit: false });
+
+    expect(input.value).toBe("hold jer til v1");
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith(
+      "chat_thread_post",
+      expect.anything(),
+    );
+  });
+
+  it("diktering laegges TIL en kladde der allerede staar der", async () => {
+    await render();
+    const input = host.querySelector<HTMLTextAreaElement>("[data-chat-input]")!;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(input, "og desuden");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await dictate({ name: "card-3", text: "hold jer til v1", submit: false });
+    expect(input.value).toBe("og desuden hold jer til v1");
+  });
+
+  it("diktering med auto-send poster den NYE tekst, ikke closurens kladde", async () => {
+    // Regressionsvaernet for `send(explicitText)`: `send()` uden parameter
+    // laeser `draft` fra render-closuren, saa et setDraft efterfulgt af send i
+    // samme handler ville poste den gamle kladde — og var composeren tom
+    // (normalfaldet), ville `if (!text) return` sluge transskriptet HELT.
+    await render();
+    await dictate({ name: "card-3", text: "kør testene", submit: true });
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("chat_thread_post", {
+      thread: "t7",
+      text: "kør testene",
+    });
+  });
+
+  it("diktering til et andet kort roerer ikke denne kladde", async () => {
+    await render();
+    const input = host.querySelector<HTMLTextAreaElement>("[data-chat-input]")!;
+    await dictate({ name: "card-9", text: "til naboen", submit: true });
+
+    expect(input.value).toBe("");
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith(
+      "chat_thread_post",
+      expect.anything(),
+    );
+  });
+
   it("melder sig ud af canvas-rodens user-select: none", async () => {
     await act(async () => {
       root.render(

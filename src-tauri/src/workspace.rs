@@ -106,6 +106,14 @@ pub struct Settings {
     /// Rute-slug for kommando-routing. Se `providers::ROUTER_ROUTES`.
     #[serde(default = "default_routing_provider")]
     pub routing_provider: String,
+    /// Diktering (hold nede = optag, slip = indsaet i det fokuserede korts
+    /// composer). Samme accelerator-grammatik som `ptt_hotkey`, men sin egen
+    /// slot i polleren — se `wake_hotkey::HotkeySlot`.
+    pub dictation_hotkey: String,
+    /// Skal dikteringen selv sende, eller kun indsaette? Default er KUN
+    /// indsaette: en fejlhoert saetning maa ikke kunne blive til en koert
+    /// kommando uden at brugeren har set den foerst.
+    pub dictation_submit: bool,
 }
 
 /// Default-PTT i "CmdOrCtrl+Space"-klassen (planens krav: implementer vaelger
@@ -120,6 +128,12 @@ pub const DEFAULT_PTT_HOTKEY: &str = "CmdOrCtrl+Shift+Space";
 
 /// Bindende default fra planens spec-afvigelses-journal.
 pub const DEFAULT_EXIT_TYPE_MODE_HOTKEY: &str = "Shift+Escape";
+
+/// Default-diktering. `KeyD` for "diktér", og med samme Ctrl+Shift-praefiks
+/// som PTT'en, saa de to laeses som et par. Triggeren er en ANDEN tast end
+/// PTT'ens Space — det er ikke tilfaeldigt, men netop hvad `wake_hotkey::
+/// collides` kraever: to genveje paa samme tast kan fyres af eet tryk.
+pub const DEFAULT_DICTATION_HOTKEY: &str = "CmdOrCtrl+Shift+KeyD";
 
 pub const WALLPAPER_SLUGS: &[&str] = &[
     "liquid-only",
@@ -165,6 +179,8 @@ impl Default for Settings {
             default_agent: default_agent(),
             stt_provider: default_stt_provider(),
             routing_provider: default_routing_provider(),
+            dictation_hotkey: DEFAULT_DICTATION_HOTKEY.to_string(),
+            dictation_submit: false,
         }
     }
 }
@@ -569,11 +585,14 @@ pub struct SettingsInput {
     pub default_agent: String,
     pub stt_provider: String,
     pub routing_provider: String,
+    pub dictation_hotkey: String,
+    pub dictation_submit: bool,
 }
 
 pub fn set_settings(input: SettingsInput) -> Result<(), String> {
     let ptt = input.ptt_hotkey.trim().to_string();
     let exit = input.exit_type_mode_hotkey.trim().to_string();
+    let dictation = input.dictation_hotkey.trim().to_string();
     let engine = input.voice_engine.trim().to_string();
     let wallpaper = input.wallpaper.trim().to_string();
     let default_agent = input.default_agent.trim().to_string();
@@ -582,7 +601,18 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
     if exit.is_empty() {
         return Err("hotkey bindings must be non-empty".to_string());
     }
-    crate::wake_hotkey::parse_accelerator(&ptt)?;
+    let ptt_combo = crate::wake_hotkey::parse_accelerator(&ptt)?;
+    let dictation_combo = crate::wake_hotkey::parse_accelerator(&dictation)?;
+    // Kollision er IKKE lighed: polleren og DOM'en matcher begge en kombo paa
+    // SUBSET af modifiers, saa et Ctrl+Shift+Space-tryk fyrer baade
+    // `Ctrl+Space` og `Ctrl+Shift+Space`. Reglen bor i wake_hotkey.rs sammen
+    // med den semantik den udleder sig af.
+    if crate::wake_hotkey::collides(&ptt_combo, &dictation_combo) {
+        return Err(
+            "stemme-aktivering og diktering maa ikke bruge samme tast — vaelg to forskellige"
+                .to_string(),
+        );
+    }
     if engine != "pipeline" {
         return Err("voice_engine must be \"pipeline\"".to_string());
     }
@@ -626,6 +656,8 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
         default_agent,
         stt_provider,
         routing_provider,
+        dictation_hotkey: dictation,
+        dictation_submit: input.dictation_submit,
     })
 }
 

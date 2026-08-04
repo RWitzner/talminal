@@ -62,13 +62,13 @@ node scripts/link-check.mjs
 node scripts/data-dir-guard.mjs verify
 ```
 
-Forventningen, målt 2026-08-03:
+Forventningen, målt 2026-08-04:
 
 | Trin | Forventet |
 |---|---|
-| `cargo test --locked` | 637 passed, 0 failed, 1 ignored |
-| `cargo test --locked --features supervision` | 658 passed, 0 failed, 1 ignored |
-| `npx vitest run` | 78 suiter, 823 tests |
+| `cargo test --locked` | 643 passed, 0 failed, 1 ignored |
+| `cargo test --locked --features supervision` | 664 passed, 0 failed, 1 ignored |
+| `npx vitest run` | 82 suiter, 864 tests |
 | `npm run build` | `0/30 forbidden strings` |
 | `cargo fmt --check` og alle tre clippy | **nul output** |
 | `node scripts/repo-scan.mjs` | 0 uklassificerede hits |

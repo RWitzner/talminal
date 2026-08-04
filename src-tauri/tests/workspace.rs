@@ -84,6 +84,11 @@ fn settings_input(
         default_agent: agent.to_string(),
         stt_provider: "openai".to_string(),
         routing_provider: "vercel".to_string(),
+        // Dikterings-felterne holdes paa deres defaults her, saa de mange
+        // eksisterende kaldere bevarer signaturen. De tests der handler OM
+        // dikteringen saetter dem selv paa den returnerede struct.
+        dictation_hotkey: workspace::DEFAULT_DICTATION_HOTKEY.to_string(),
+        dictation_submit: false,
     }
 }
 
@@ -1145,12 +1150,108 @@ fn normalize_settings_trims_padded_but_valid_route() {
 
 #[test]
 fn settings_input_rejects_a_missing_field() {
-    let json = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai"}"#;
-    let parsed = serde_json::from_str::<SettingsInput>(json);
+    // Hvert af de to json'er mangler PRAECIS eet felt, saa testen ikke kan
+    // bestaa af den forkerte grund naar wire-formen vokser.
+    let uden_routing = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
     assert!(
-        parsed.is_err(),
+        serde_json::from_str::<SettingsInput>(uden_routing).is_err(),
         "manglende routing_provider skulle vaere en deserialiseringsfejl"
     );
+
+    let uden_dictation = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_submit":false}"#;
+    assert!(
+        serde_json::from_str::<SettingsInput>(uden_dictation).is_err(),
+        "manglende dictation_hotkey skulle vaere en deserialiseringsfejl"
+    );
+
+    // Kontrolproeve: med ALLE felter parser den.
+    let komplet = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
+    serde_json::from_str::<SettingsInput>(komplet).expect("komplet wire-form skal parse");
+}
+
+#[test]
+fn gammel_settings_json_uden_dikterings_felter_faar_defaults() {
+    let legacy: Settings =
+        serde_json::from_str(r#"{"ptt_hotkey":"Ctrl+F12","exit_type_mode_hotkey":"Shift+Escape"}"#)
+            .expect("legacy settings deserialize");
+    assert_eq!(legacy.dictation_hotkey, workspace::DEFAULT_DICTATION_HOTKEY);
+    assert!(
+        !legacy.dictation_submit,
+        "auto-send skal vaere FRA for den der opgraderer"
+    );
+}
+
+#[test]
+fn set_settings_afviser_kolliderende_genveje() {
+    let home = tempfile::tempdir().expect("home");
+    let global = tempfile::tempdir().expect("global");
+    run_worker_with_global(
+        "worker_set_settings_afviser_kolliderende_genveje",
+        home.path(),
+        Some(global.path()),
+    );
+    // Workeren afviser to kolliderende kombinationer og gemmer derefter EEN
+    // gyldig. At filen findes med den gyldige genvej er beviset for at
+    // afvisningerne var kirurgiske — ikke at hele set_settings var doed.
+    let saved = std::fs::read_to_string(global.path().join("settings.json"))
+        .expect("kontrolproeven skal have gemt en settings.json");
+    assert!(
+        saved.contains("CmdOrCtrl+Shift+KeyD"),
+        "uventet settings.json: {saved}"
+    );
+}
+
+#[test]
+fn worker_set_settings_afviser_kolliderende_genveje() {
+    if !is_worker("worker_set_settings_afviser_kolliderende_genveje") {
+        return;
+    }
+    // Ingen `common::serial()` her: worker-testen koerer i sin EGEN proces med
+    // TALMINAL_HOME/_GLOBAL_HOME allerede sat af `run_worker_with_global`, og
+    // serial() ville pege dem et andet sted hen end det driveren asserter paa.
+
+    // Identiske genveje.
+    let mut ens = settings_input(
+        "CmdOrCtrl+Shift+Space",
+        "Shift+Escape",
+        "pipeline",
+        "blue-folds",
+        "claude",
+    );
+    ens.dictation_hotkey = "CmdOrCtrl+Shift+Space".to_string();
+    let error = workspace::set_settings(ens).expect_err("ens genveje skal afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // SUBSET-faelden, og den vigtigste af de to: de to strenge er FORSKELLIGE,
+    // men eet Ctrl+Shift+Space-tryk matcher dem begge, fordi combo-matchet er
+    // subset og ikke lighed.
+    let mut subset = settings_input(
+        "CmdOrCtrl+Space",
+        "Shift+Escape",
+        "pipeline",
+        "blue-folds",
+        "claude",
+    );
+    subset.dictation_hotkey = "CmdOrCtrl+Shift+Space".to_string();
+    let error = workspace::set_settings(subset).expect_err("subset-kollision skal afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Kontrolproeve: forskellige trigger-taster gemmes fint.
+    let mut ok = settings_input(
+        "CmdOrCtrl+Shift+Space",
+        "Shift+Escape",
+        "pipeline",
+        "blue-folds",
+        "claude",
+    );
+    ok.dictation_hotkey = "CmdOrCtrl+Shift+KeyD".to_string();
+    ok.dictation_submit = true;
+    workspace::set_settings(ok).expect("forskellige taster skal gemmes");
+    // `load_settings()` frem for `get_workspace()`: settings.json er global og
+    // uafhaengig af om et workspace er loadet — og det er kun settings vi maaler.
+    let saved = load_settings();
+    assert_eq!(saved.dictation_hotkey, "CmdOrCtrl+Shift+KeyD");
+    assert!(saved.dictation_submit);
 }
 
 #[test]

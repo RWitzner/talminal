@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     keyHandler: ((ev: KeyboardEvent) => boolean) | null;
     selection: string;
     cleared: number;
+    pasted: string[];
   }[],
   dataHandlers: [] as ((data: string) => void)[],
 }));
@@ -33,6 +34,7 @@ vi.mock("@xterm/xterm", () => ({
     keyHandler: ((ev: KeyboardEvent) => boolean) | null = null;
     selection = "";
     cleared = 0;
+    pasted: string[] = [];
 
     constructor(options: Record<string, unknown>) {
       mocks.options.push(options);
@@ -59,6 +61,9 @@ vi.mock("@xterm/xterm", () => ({
     clearSelection(): void {
       this.cleared += 1;
       this.selection = "";
+    }
+    paste(data: string): void {
+      this.pasted.push(data);
     }
   },
 }));
@@ -194,6 +199,47 @@ describe("Card terminal-opsaetning", () => {
 
     expect(term.keyHandler!(ev)).toBe(true);
     expect(ev.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("diktering indsaettes gennem xterms paste-vej, ikke som et raat write_pty", async () => {
+    // Paste-vejen er valgt fordi den bevarer bracketed paste (samme grund som
+    // Ctrl+V's, se terminalClipboard.ts): teksten skal lande som ÉT stykke i
+    // agentens composer. Et raat write_pty ville sende den som loese bytes, og
+    // en newline midt i saetningen ville submitte for tidligt.
+    await render();
+    const term = mocks.terminals[0]!;
+    mocks.invoke.mockClear();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("talminal:dictation-insert", {
+          detail: { name: "card-2", text: "kør testene igen", submit: false },
+        }),
+      );
+      await flushMicrotasks();
+    });
+
+    expect(term.pasted).toEqual(["kør testene igen"]);
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "write_pty",
+      expect.anything(),
+    );
+  });
+
+  it("diktering til et ANDET kort roerer ikke denne terminal", async () => {
+    await render();
+    const term = mocks.terminals[0]!;
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("talminal:dictation-insert", {
+          detail: { name: "card-9", text: "til naboen", submit: false },
+        }),
+      );
+      await flushMicrotasks();
+    });
+
+    expect(term.pasted).toEqual([]);
   });
 
   it("indsat tekst hex-dumpes ikke, men ukendte ESC-chunks goer stadig", async () => {

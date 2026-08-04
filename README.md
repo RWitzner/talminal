@@ -91,6 +91,22 @@ standarden.
 **Du kan kæde dem sammen,** og de udføres i den rækkefølge du sagde dem: *"Luk kort to og
 genstart kort tre."* Højst ti kommandoer og ti nye kort pr. sætning.
 
+### Når du hellere vil diktere end kommandere
+
+Gider du ikke formulere *"Send til kort et: …"*, så lad være. Klik ind i det kort du vil
+skrive i, hold **`Ctrl+Shift+D`** nede, sig din besked, slip — så står ordene i agentens
+tekstfelt. Ikke som en kommando, men som var de tastet.
+
+Den vej går **udenom routeren**: der bliver ikke fortolket noget, og der bliver ikke sagt
+fra. Alt hvad den hører, lander. Det er dig der læser korrektur i feltet og selv trykker
+Enter — og vil du hellere have at den sender med det samme, er der en kontakt under
+Indstillinger → Stemme. Den er slået fra, fordi en fejlhørt sætning ellers er afsendt før
+du så den.
+
+Det virker i både agent-terminaler og chat-kort. Står du ikke i noget kort, sker der
+ingenting — og HUD'en siger hvorfor. Genvejen kan ændres samme sted som stemmegenvejen;
+de to må bare ikke bruge samme tast.
+
 ### Hvad den med vilje ikke gør
 
 Den siger hellere fra end at gætte:
