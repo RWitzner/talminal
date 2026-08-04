@@ -141,8 +141,26 @@ mod platform {
     mod tests {
         use super::*;
         use std::sync::{Arc, Barrier};
-        use std::time::Instant;
 
+        /// Beviset er RETURVAERDIEN, ikke et stopur.
+        ///
+        /// Testen havde ogsaa `assert!(elapsed < 250 ms)` med teksten "den faldt
+        /// sandsynligvis tilbage til polling". Den paastand kan ikke vaere sand
+        /// i det oejeblik den skrives ud: falder vi tilbage, sover
+        /// `PollWake::wait` hele timeouten og returnerer `false` — og saa var
+        /// vi faeldet paa `vaekket` i linjen over. `WaitForSingleObject` giver
+        /// kun `WAIT_OBJECT_0`, hvis eventet faktisk blev signaleret.
+        ///
+        /// Graensen maalte derfor ikke koden, men hvor travlt OS'et havde med
+        /// at skedulere traaden igen. Paa GitHubs delte runnere faeldede den
+        /// main to gange samme dag — 331,9 ms og 520,98 ms — mens de samme
+        /// commits var groenne i deres PR-koersler. Og fordi jobbet stopper
+        /// ved foerste roede step, naaede fmt, clippy, secret-scan og
+        /// link-check aldrig at koere paa de commits.
+        ///
+        /// Skal latensen vogtes igen, skal graensen bindes til det den skelner
+        /// IMOD — poll-intervallet — og ikke til et tal der foeles hurtigt paa
+        /// en maskine man ikke ejer.
         #[test]
         fn named_event_vaekker_foer_poll_timeout() {
             let dir = tempfile::tempdir().unwrap();
@@ -155,9 +173,10 @@ mod platform {
             let handle = std::thread::spawn(move || {
                 let wake = PollWake::new(&base_i_traad, slug);
                 traad_klar.wait();
-                let start = Instant::now();
-                let vaekket = wake.wait(Duration::from_secs(2));
-                (vaekket, start.elapsed())
+                // Timeouten er rundelig med vilje: den er ikke det testen
+                // maaler, kun et loft saa en fejlet test doer frem for at
+                // haenge. Skelnen mellem event og fallback ligger i svaret.
+                wake.wait(Duration::from_secs(2))
             });
 
             // Barrieren passeres først EFTER CreateEventW, så OpenEventW må
@@ -176,11 +195,11 @@ mod platform {
                 },
             )
             .expect("active request + wake-up");
-            let (vaekket, elapsed) = handle.join().unwrap();
-            assert!(vaekket, "polleren timed out i stedet for at blive vækket");
+            let vaekket = handle.join().unwrap();
             assert!(
-                elapsed < Duration::from_millis(250),
-                "wake-up tog {elapsed:?}; den faldt sandsynligvis tilbage til polling"
+                vaekket,
+                "polleren sov timeouten ud i stedet for at blive vaekket af eventet \
+                 — den filbaserede fallback baerer nu hele latensen"
             );
         }
     }
