@@ -59,7 +59,7 @@
 // uopnaaelig by construction og dermed en gate ingen kan passere.
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -70,7 +70,84 @@ const cargoHome = process.env.CARGO_HOME || path.join(homedir(), '.cargo')
 
 const check = process.argv.includes('--check-only')
 
+// ---------------------------------------------------------------------------
+// FRISKHEDS-GATEN. Rust-siden bygges af cargo, som selv ved hvad der er
+// forældet. Frontenden gør IKKE: den ligger færdigbygget i `dist/` og bliver
+// indlejret i binæren som den er. Er `dist/` ældre end kilderne, indlejrer et
+// release-byg en gammel brugerflade i en ny version — tavst.
+//
+// Det er ikke hypotetisk. `talminal@0.3.0` blev udgivet 2026-08-04 med
+// binærer bygget 13:39 samme dag, mens de to features i den version blev
+// skrevet mellem 16:26 og 17:00. Versionsnummeret stod korrekt fem steder;
+// koden i artefaktet var den forrige. Versionen måtte brændes.
+//
+// Hvorfor mtime og ikke en hash: `dist/` er et BYGGE-output, ikke en kopi af
+// kilderne, så der findes ingen hash at sammenligne med uden at bygge — og
+// bygger vi for at tjekke, kan vi lige så godt bare bygge.
+//
+// GATEN FEJLER MED VILJE TIL DEN SIKRE SIDE. Et branch-skift rører mtime på
+// filer hvis indhold ikke ændrede sig, så den vil af og til kræve et byg der
+// teknisk set var overflødigt. Prisen for det er ét minut. Prisen for den
+// modsatte fejl er en udgivelse der skal trækkes tilbage.
+// ---------------------------------------------------------------------------
+
+/** Nyeste mtime under en sti. Manglende sti giver -Infinity (tæller ikke med). */
+function newestMtime(target) {
+  let stat
+  try {
+    stat = statSync(target)
+  } catch {
+    return -Infinity
+  }
+  if (!stat.isDirectory()) return stat.mtimeMs
+  let newest = stat.mtimeMs
+  for (const entry of readdirSync(target, { withFileTypes: true })) {
+    // node_modules hoerer ikke til kilderne, og at gaa igennem den ville
+    // goere gaten langsom nok til at nogen ville slaa den fra.
+    if (entry.name === 'node_modules') continue
+    newest = Math.max(newest, newestMtime(path.join(target, entry.name)))
+  }
+  return newest
+}
+
+function assertFrontendIsFresh() {
+  const distIndex = path.join(repoRoot, 'dist', 'index.html')
+  let builtAt
+  try {
+    builtAt = statSync(distIndex).mtimeMs
+  } catch {
+    console.error('release-build: dist/index.html findes ikke — koer `npm run build` foerst')
+    process.exit(1)
+  }
+
+  // Kilderne der ender i bundtet. `index.html` er Vites entry, og
+  // vite.config.ts kan aendre outputtet uden at en enkelt src-fil goer det.
+  const inputs = ['src', 'index.html', 'vite.config.ts', 'public']
+  let newestSource = -Infinity
+  let newestName = null
+  for (const name of inputs) {
+    const mtime = newestMtime(path.join(repoRoot, name))
+    if (mtime > newestSource) {
+      newestSource = mtime
+      newestName = name
+    }
+  }
+
+  if (newestSource > builtAt) {
+    const alder = Math.round((newestSource - builtAt) / 60_000)
+    console.error(
+      `release-build: dist/ er ${alder} minut(ter) AELDRE end nyeste kilde (${newestName}).\n` +
+        '  Et release-byg ville indlejre den gamle brugerflade i den nye version.\n' +
+        '  Koer `npm run build` og proev igen.',
+    )
+    process.exit(1)
+  }
+  console.log('release-build: dist/ er nyere end kilderne — OK')
+}
+
 if (!check) {
+  assertFrontendIsFresh()
+
   const flags = [
     `--remap-path-prefix=${path.join(cargoHome, 'registry')}=/cargo-registry`,
     `--remap-path-prefix=${repoRoot}=/talminal`,
