@@ -6,6 +6,7 @@
 
 **Tal med dine terminaler.**<br/>
 Et canvas af agent-terminaler — Claude Code og Codex CLI — som du styrer med stemmen.<br/>
+Sig en kommando og lad den orkestrere kortene — **eller diktér direkte ned i det kort du står i.**<br/>
 Kun til <img src="assets/windows11.svg" alt="Windows 11" width="98" height="18">
 
 [![][license-shield]][license-link]
@@ -45,6 +46,19 @@ Claude Code eller Codex CLI — og **nummeret er det du taler til.**
 Hold **`Ctrl+Shift+Space`** nede, sig din kommando, slip. Genvejen kan ændres under
 Indstillinger → Stemme. Stemmen er en genvej, ikke en betingelse: et kort kan også oprettes
 med musen ved at **dobbeltklikke på tom canvasflade.**
+
+### Mikrofonen har to veje
+
+De deler kun selve optagelsen. Hvad der sker bagefter, er to forskellige ting — og det er
+genvejen du holder nede, der afgør hvilken:
+
+| | Hold nede | Hvad der så sker |
+|---|---|---|
+| **Kommandér** | `Ctrl+Shift+Space` | Routeren fortolker det du sagde og **udfører** det: opretter, lukker eller genstarter kort, eller sender en besked videre til et af dem. |
+| **Diktér** | `Ctrl+Shift+D` | Ordene skrives **ordret** i det kort du står i, som var de tastet. Ingen fortolkning, ingen orkestrering. |
+
+Kommandovejen er resten af dette afsnit. Dikteringen har sit eget længere nede:
+[Når du hellere vil diktere end kommandere](#når-du-hellere-vil-diktere-end-kommandere).
 
 **Ét canvas hører til ét projekt.** Sidebaren til venstre viser dine projekter og skifter
 mellem dem; listen overlever genstart, og **+ Tilføj projekt** åbner en mappevælger.
@@ -98,10 +112,14 @@ skrive i, hold **`Ctrl+Shift+D`** nede, sig din besked, slip — så står orden
 tekstfelt. Ikke som en kommando, men som var de tastet.
 
 Den vej går **udenom routeren**: der bliver ikke fortolket noget, og der bliver ikke sagt
-fra. Alt hvad den hører, lander. Det er dig der læser korrektur i feltet og selv trykker
-Enter — og vil du hellere have at den sender med det samme, er der en kontakt under
-Indstillinger → Stemme. Den er slået fra, fordi en fejlhørt sætning ellers er afsendt før
-du så den.
+fra. Alt hvad den hører, lander. Det er en almindelig diktering, bare med en agent-terminal
+som tekstfelt — kender du en dikteringsapp der skriver i det vindue du står i, er det den
+fornemmelse.
+
+Det er dig der læser korrektur i feltet og selv trykker Enter — og vil du hellere have at
+den sender med det samme, er der kontakten **Send automatisk når du slipper** under
+Indstillinger → Stemme. Den er slået fra som standard, fordi en fejlhørt sætning ellers er
+afsendt før du så den.
 
 Det virker i både agent-terminaler og chat-kort. Står du ikke i noget kort, sker der
 ingenting — og HUD'en siger hvorfor. Genvejen kan ændres samme sted som stemmegenvejen;
