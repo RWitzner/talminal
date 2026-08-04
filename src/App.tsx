@@ -100,6 +100,17 @@ const DRY_RUN_FORCED = ["1", "true", "yes", "on"].includes(
 // er en aegte boolean. Det valgfrie opslag daekker testmiljoeer uden env.
 const DEV_BUILD =
   (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true;
+// Sikkerhedsnet mod en haengende taleknap — IKKE en forventet laengde. Naar
+// den rammer, KASSERES turen (pipeline.ts:520, dictation.ts:124 aflyser og
+// melder fejl), saa alt det sagte er tabt. Graensen skal derfor ligge over den
+// laengste ytring et menneske faktisk siger i ét straek, ikke taet paa den:
+// ét minut cuttede ejeren midt i saetningen.
+//
+// Samme tal for begge veje gennem mikrofonen. Dikteringen er den af de to der
+// realistisk loeber laengst (fri tekst frem for én kommando), saa et lavere
+// tal dér ville ramme foerst og haardest.
+const MAX_UTTERANCE_MS = 3 * 60_000;
+
 const INITIAL_HUD: HudState = {
   session: "asleep",
   transcript: "",
@@ -1000,7 +1011,7 @@ export default function App() {
             error: null,
             chain: null,
           }),
-        maxUtteranceMs: 60_000,
+        maxUtteranceMs: MAX_UTTERANCE_MS,
         dispatch: dispatcher.dispatch,
         dryRunDispatch,
         getDryRun: () => dryRunRef.current,
@@ -1075,7 +1086,7 @@ export default function App() {
         // der er intet start/stop-blip, saa brugeren ikke kan se at
         // mikrofonen er aaben (mikrofon-sandheds-princippet ovenfor).
         startCapture: feedbackCapture,
-        maxUtteranceMs: 60_000,
+        maxUtteranceMs: MAX_UTTERANCE_MS,
         warm: () => {
           void invoke("warm_voice_connections").catch(() => undefined);
         },
