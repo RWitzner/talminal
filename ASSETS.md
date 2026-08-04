@@ -117,7 +117,10 @@ er til for at løse.
 ### Rettighedsgrundlag
 
 JetBrains Mono er udgivet under **SIL Open Font License 1.1**. Licensteksten følger med i
-`src/assets/JetBrainsMono-OFL.txt`, sådan som OFL'en kræver. OFL tillader bundling og
+[`LICENSE-JetBrainsMono.txt`](LICENSE-JetBrainsMono.txt) — i roden ved siden af
+[LICENSE](LICENSE), og **med i npm-tarballen**, fordi fonten distribueres indlejret i
+`talminal-canvas.exe`. En modtager af pakken har altså fonten, og så skal licensen være
+der også. OFL tillader bundling og
 redistribution som del af et produkt — også kommercielt — så længe licensen følger med og
 fonten ikke sælges løsrevet for sig selv.
 

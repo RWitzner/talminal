@@ -43,9 +43,31 @@ describe('npm-pakkens form', () => {
     expect(pkg.files).toContain('bin/')
     // NOTICE og ASSETS.md skal med: tarballen er sin egen
     // distributionskanal, og ASSETS.md er lydklippenes eneste grant.
-    for (const f of ['README.md', 'LICENSE', 'NOTICE', 'ASSETS.md']) {
+    //
+    // LICENSE-JetBrainsMono.txt af samme grund, men for fonten: den er
+    // BUNDLET og ligger indlejret i talminal-canvas.exe, saa enhver der har
+    // tarballen har ogsaa fonten. SIL OFL 1.1 kraever at licensteksten
+    // foelger med kopier af fonten — og indtil 0.2.0 gjorde den det ikke,
+    // selv om ASSETS.md henviste til den. En henvisning til en fil
+    // modtageren ikke har er ingen licensopfyldelse.
+    for (const f of [
+      'README.md',
+      'LICENSE',
+      'NOTICE',
+      'ASSETS.md',
+      'LICENSE-JetBrainsMono.txt',
+    ]) {
       expect(pkg.files).toContain(f)
     }
+  })
+
+  // Filen skal ikke bare staa i allowlisten — den skal FINDES, og den skal
+  // vaere OFL'en. En tom eller omdoebt fil ville bestaa testen ovenfor og
+  // stadig efterlade pakken uden licensgrundlag for fonten.
+  it('fontens licenstekst findes og er OFL 1.1', () => {
+    const ofl = read('LICENSE-JetBrainsMono.txt')
+    expect(ofl).toMatch(/Copyright .* The JetBrains Mono Project Authors/)
+    expect(ofl).toMatch(/SIL Open Font License, Version 1\.1/)
   })
 
   // `vendor/` maa ALDRIG spores: 19 MB binaerer i en offentlig historik kan
