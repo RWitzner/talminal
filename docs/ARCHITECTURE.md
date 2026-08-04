@@ -136,14 +136,21 @@ Kun én af de to må holde mikrofonen ad gangen. Ejerskabet følger holdet — i
 tilstand, som er `speaking` længe efter tasten er sluppet — og gaten sidder i `App.tsx`.
 
 **Ruterne bor ét sted — men navnene gør ikke.** `providers.rs` er den eneste kilde til
-endpoints og modelnavne: `STT_ROUTES` (1 rute) og `ROUTER_ROUTES` (4 ruter). De når fladen
-over wiren (`resolve_voice_routes`, `workspace.rs:66` → `voice_routes`, `types.ts:123`),
-så dér er der ingen kopi at holde synkron. Undtagelsen er **navnene**: de fire
-`KEY_SLOT_*` (`providers.rs:71-74`) står ordret igen i `src/Settings.tsx:35-38`, og de fire
-router-slugs i `ROUTING_CHOICES` (`Settings.tsx:498`). Tilføjer du en udbyder, skal begge
-sider røres. Nøglerne selv ligger i Windows Credential Manager under service `"Talminal"`
-(`secrets.rs:718`) og krydser **aldrig** WebView-grænsen — `load_secret`-kommandoen svarer
-`true`/`null`, ikke værdien.
+endpoints og modelnavne: `STT_ROUTES` (2 ruter — samme udbyder og samme realtime-session,
+kun modellen skifter) og `ROUTER_ROUTES` (4 ruter). De når fladen over wiren
+(`resolve_voice_routes`, `workspace.rs:65` → `voice_routes`, `types.ts:118`), så dér er der
+ingen kopi at holde synkron. Undtagelsen er **navnene**: de fire `KEY_SLOT_*`
+(`providers.rs:76-79`) står ordret igen i `src/Settings.tsx:40-43`, og slugs står igen i
+`STT_CHOICES` og `ROUTING_CHOICES` (`Settings.tsx:610` og `:620`). Tilføjer du en udbyder
+eller en model, skal begge sider røres.
+
+Drift ER sket her før: `types.ts:113` manglede `"reasoning_off"` i `decoration`-unionen fra
+GPT-5.6-ruten blev skrevet ind, til det blev fanget 2026-08-04. Ingen test vogter
+spejlingen — kun læsning.
+
+Nøglerne selv ligger i Windows Credential Manager under service `"Talminal"`
+(`secrets.rs:702`) og krydser **aldrig** WebView-grænsen — `load_secret`-kommandoen
+svarer `true`/`null`, ikke værdien.
 
 ## Tilstand på disken
 

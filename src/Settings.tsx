@@ -600,6 +600,23 @@ function WallpaperSection({
   );
 }
 
+// Begge valg er OpenAI, saa labels er MODELNAVNE og ikke udbydernavne — det er
+// modellen der er forskellen. (Routing-sektionen har udbydernavne, fordi dét
+// valg peger paa forskellige leverandoerer.)
+//
+// Advarslen paa mini siger hvad vi VED (mindre model, hurtigere, billigere) og
+// hvad vi ikke ved. Der staar med vilje ingen procent: mini er aldrig koert
+// gennem voice-eval paa dansk.
+const STT_CHOICES = [
+  { slug: "openai", label: "gpt-4o-transcribe", warning: null },
+  {
+    slug: "openai-mini",
+    label: "gpt-4o-mini-transcribe",
+    warning:
+      "Mindre model — hurtigere og ca. halv pris. Ikke målt på dansk; forvent flere fejlhøringer på kort-numre.",
+  },
+] as const;
+
 const ROUTING_CHOICES = [
   { slug: "vercel", label: "Vercel AI Gateway", warning: null },
   { slug: "google", label: "Google direkte", warning: null },
@@ -617,6 +634,7 @@ const ROUTING_CHOICES = [
 
 export function ProviderSection({
   title,
+  lead,
   choices,
   settingsKey,
   currentModelOf,
@@ -624,6 +642,8 @@ export function ProviderSection({
   onSaved,
 }: {
   title: string;
+  /** Valgfri undertekst over valgene — fx hvilken noegle ruten kraever. */
+  lead?: string;
   choices: ReadonlyArray<{
     slug: string;
     label: string;
@@ -669,6 +689,11 @@ export function ProviderSection({
     setSelected(slug);
     setBusy(true);
     setError(null);
+    // Probe-resultatet hoerte til den FORRIGE rute. Blev det staaende, ville
+    // det groenne flueben staa under et valg der aldrig er testet — og
+    // modeltagget ved siden af skifter samtidig til den nye model, saa raekken
+    // ville paastaa at netop den model havde svaret.
+    setProbeResult(null);
     try {
       await saveSettingsPatch({ [settingsKey]: slug });
       const workspace = await invoke<WorkspaceResponse>("get_workspace");
@@ -699,6 +724,7 @@ export function ProviderSection({
       <div style={styles.rowHeader}>
         <span style={styles.label}>{title}</span>
       </div>
+      {lead !== undefined && <div style={styles.rowLead}>{lead}</div>}
       {/* Hvert valg er et helt kort, ikke en radioknap med tekst ved siden af:
           hele fladen er klikbar, og advarslen staar INDE i det valg den
           gaelder — foer laa den som graa tekst under raekken og kunne lige saa
@@ -760,82 +786,42 @@ export function ProviderSection({
 }
 
 /**
- * Stemme-genkendelsen er ikke laengere et valg.
+ * Stemme-genkendelsen er et valg igen — men et ANDET valg end foer.
  *
- * OpenRouter-STT blev slettet 2026-07-29 (ejer-beslutning: samme model, men
- * uden loebende tekst, med hele ventetiden efter man slipper taleknappen, og
- * uden domaene-ordlisten — "en rute vi ikke kan levere god dansk paa, skal vi
- * ikke tilbyde"). Tilbage er én rute, og et radiovalg med én mulighed er ikke
- * et valg. Sektionen viser derfor bare hvad der koeres paa — men BEHOLDER
- * testknappen, som er det eneste sted man kan faa at vide om noeglen og ruten
- * virker, foer man staar med en stum mikrofon.
+ * Indtil 2026-07-29 valgte man UDBYDER (OpenAI eller OpenRouter). Da
+ * OpenRouter-ruten blev slettet, stod sektionen tilbage som ren visning: et
+ * radiovalg med én mulighed er ikke et valg. Fra 2026-08-04 vaelger man MODEL
+ * inden for samme udbyder — samme realtime-session, samme noegle, samme
+ * domaene-ordliste, kun vaegtklassen skifter. Derfor baerer valgene her ingen
+ * advarsel om manglende kapabiliteter, som OpenRouter-valget gjorde: de to
+ * ruter kan det samme, og forskellen er praecision mod fart og pris.
+ *
+ * Testknappen bliver staaende — den er det eneste sted man kan faa at vide om
+ * noeglen og ruten virker, foer man staar med en stum mikrofon. Bemaerk hvad
+ * den IKKE kan: bliver `prompt` tavst ignoreret af den mindre model, svarer
+ * proben stadig paent, og det viser sig foerst som ringere genkendelse af
+ * kort-numre i brug.
  */
-export function VoiceProviderSection() {
-  const [route, setRoute] = useState<{ label: string; model: string } | null>(
-    null,
-  );
-  const [probing, setProbing] = useState(false);
-  const [probeResult, setProbeResult] = useState<
-    { ok: true; text: string } | { ok: false; reason: string } | null
-  >(null);
-
-  useEffect(() => {
-    let alive = true;
-    invoke<WorkspaceResponse>("get_workspace")
-      .then((workspace) => {
-        const stt = workspace.voice_routes?.stt;
-        if (!alive || stt == null) return;
-        setRoute({ label: stt.label, model: stt.model });
-      })
-      .catch(() => {
-        // Ruten er ren visning; fejler opslaget, staar raekken uden undertekst
-        // fremfor at vise en fejl brugeren ikke kan bruge til noget.
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const runProbe = async () => {
-    setProbing(true);
-    setProbeResult(null);
-    try {
-      const workspace = await invoke<WorkspaceResponse>("get_workspace");
-      setProbeResult({ ok: true, text: await probeSttRoute(workspace.voice_routes) });
-    } catch (err) {
-      setProbeResult({ ok: false, reason: String(err) });
-    } finally {
-      setProbing(false);
-    }
-  };
-
+export function VoiceProviderSection({
+  onSaved,
+}: {
+  onSaved?: () => void | Promise<void>;
+}) {
   return (
-    <div style={styles.row} data-stt-route>
-      <div style={styles.rowHeader}>
-        <span style={styles.label}>Stemme-genkendelse</span>
-        {route !== null && <span style={styles.modelTag}>{route.model}</span>}
-      </div>
-      <div style={styles.rowLead}>
-        {route === null
-          ? "Via OpenAI."
-          : `Via ${route.label}. Kræver OpenAI-nøglen under Nøgler.`}
-      </div>
-      <div style={styles.probeRow}>
-        <button
-          style={styles.button}
-          onClick={() => void runProbe()}
-          disabled={probing}
-        >
-          {probing ? "Tester…" : "Test forbindelsen"}
-        </button>
-      </div>
-      {probeResult !== null &&
-        (probeResult.ok ? (
-          <div style={styles.ok}>✓ {probeResult.text}</div>
-        ) : (
-          <div style={styles.error}>✗ {probeResult.reason}</div>
-        ))}
-    </div>
+    <ProviderSection
+      title="Stemme-genkendelse"
+      lead="Via OpenAI. Kræver OpenAI-nøglen under Nøgler."
+      choices={STT_CHOICES}
+      settingsKey="stt_provider"
+      currentModelOf={(routes) => routes.stt.model}
+      // FRISKT snapshot pr. klik: proben skal teste den rute man lige har
+      // valgt — ikke den der var valgt da sektionen blev monteret.
+      probe={async () => {
+        const workspace = await invoke<WorkspaceResponse>("get_workspace");
+        return probeSttRoute(workspace.voice_routes);
+      }}
+      onSaved={onSaved}
+    />
   );
 }
 
@@ -965,6 +951,15 @@ export function ResetProvidersButton({
       <button style={styles.button} onClick={() => void reset()} disabled={busy}>
         Nulstil til anbefalet
       </button>
+      {/* Knappen bor under Routing, men roerer BEGGE roller — og
+          stemme-genkendelsen er en anden kategori, saa den aendring sker uden
+          for skaermen. Derfor staar det skrevet. */}
+      {/* Uden modelnavne i teksten: `providers.rs` er den eneste kilde til
+          dem, og en streng her ville vaere endnu en kopi at holde synkron. */}
+      <div style={styles.hint}>
+        Sætter både stemme-genkendelsen og routingen tilbage til de anbefalede
+        ruter.
+      </div>
       {error !== null && <div style={styles.error}>{error}</div>}
     </div>
   );
@@ -1096,7 +1091,10 @@ export function Settings({
           <HotkeySection onSaved={onSaved} />
           <DictationSection onSaved={onSaved} />
           <MicrophoneSection />
-          <VoiceProviderSection />
+          {/* onSaved er ikke kosmetik: den forer valget videre til App.tsx'
+              refresh, som opdaterer `voiceRoutesRef` — uden den taler den
+              KOERENDE session videre til den gamle model. */}
+          <VoiceProviderSection onSaved={onSaved} />
         </>
       )}
 
