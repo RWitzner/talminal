@@ -94,8 +94,11 @@ impl KeyCombo {
     }
 }
 
-/// Parser med SAMME grammatik som ptt.ts::parseAccelerator (kontrakten er
-/// `canvas/hotkey-grammar.fixtures.json`, som begge lag tester mod).
+/// Parser med SAMME grammatik som ptt.ts::parseAccelerator. Kontrakten er
+/// `src/voice/hotkey-grammar.fixtures.json`, som BEGGE lag tester mod — denne
+/// fil via `include_str!` nedenfor, frontenden via ptt.test.ts. Flyttes den,
+/// skal begge stier med; kun den ene ville lade lagene drive fra hinanden i
+/// tavshed, hvilket er praecis dét fixturen findes for at forhindre.
 /// Modifiers: ctrl/cmdorctrl/control, shift, alt/option. Praecis een trigger.
 /// Bar binding kun for F1-F12 og Mouse1-Mouse5.
 pub fn parse_accelerator(accel: &str) -> Result<KeyCombo, String> {
@@ -864,7 +867,7 @@ mod tests {
             valid: Vec<ValidCase>,
             invalid: Vec<String>,
         }
-        let raw = include_str!("../../hotkey-grammar.fixtures.json");
+        let raw = include_str!("../../src/voice/hotkey-grammar.fixtures.json");
         let fixture: Fixture = serde_json::from_str(raw).expect("fixture parser");
         for case in &fixture.valid {
             let combo = parse_accelerator(&case.accel)
