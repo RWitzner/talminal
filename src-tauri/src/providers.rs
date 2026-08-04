@@ -21,6 +21,11 @@ use serde::Serialize;
 // `voice/sttBatch.ts`) var uopnåeligt. Det er fjernet frem for at ligge og se
 // ud som om det var i brug. Skal en ikke-streamende STT-udbyder tilføjes
 // senere, skrives transporten forfra — mod dén udbyders faktiske API.
+//
+// `openai-mini` (2026-08-04) genåbner IKKE det spørgsmål. Den er ikke en ny
+// transport, men samme realtime-session med en mindre model: samme deltas,
+// samme prompt-felt, samme nøgle. Begrundelsen for at slette OpenRouter var
+// transportens — ikke modellens størrelse — og den gælder derfor ikke her.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -46,7 +51,8 @@ pub struct SttRoute {
     /// Falsk => HUD'en faar ingen loebende tekst, og turen skal ryddes
     /// eksplicit ved start (spec §4).
     ///
-    /// Er sand for den eneste rute i dag. Feltet bliver staaende, fordi det
+    /// Er sand for BEGGE ruter i dag — de deler transport, og det er
+    /// transporten der leverer deltas. Feltet bliver staaende, fordi det
     /// beskriver RUTEN og styrer rigtig adfaerd i pipelinen — modsat
     /// `transport`, hvis eneste opgave var at vaelge en kodesti der nu er
     /// slettet.
@@ -76,18 +82,39 @@ pub const KEY_SLOT_OPENROUTER: &str = "provider_key_openrouter";
 pub const DEFAULT_STT_SLUG: &str = "openai";
 pub const DEFAULT_ROUTER_SLUG: &str = "vercel";
 
-/// ÉN rute. Tabellen bevares som tabel — ikke fordi der er noget at vælge
-/// imellem i dag, men fordi den er stedet en ny udbyder skal skrives ind, og
-/// fordi wiren (`voice_routes.stt`) allerede taler dens sprog.
-pub const STT_ROUTES: &[SttRoute] = &[SttRoute {
-    slug: "openai",
-    label: "OpenAI",
-    endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
-    model: "gpt-4o-transcribe",
-    supports_partials: true,
-    supports_domain_prompt: true,
-    key_slot: KEY_SLOT_OPENAI,
-}];
+/// To ruter, én udbyder: valget er MODELLEN, ikke leverandøren. De deler
+/// endpoint, nøgleslot og begge kapabilitets-flag, fordi de er den samme
+/// realtime-session — kun vægtklassen er forskellig.
+///
+/// Rækkefølgen er UI'ets: `Settings.tsx` tegner valgene i tabellens orden, og
+/// den store model står først fordi den er defaulten.
+pub const STT_ROUTES: &[SttRoute] = &[
+    SttRoute {
+        slug: "openai",
+        label: "OpenAI",
+        endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
+        model: "gpt-4o-transcribe",
+        supports_partials: true,
+        supports_domain_prompt: true,
+        key_slot: KEY_SLOT_OPENAI,
+    },
+    // Hurtigere og ca. halv pris. Flagene er sat til true, fordi mini kører i
+    // SAMME transcription-session: den får `prompt` og `delta`-events af
+    // transporten, ikke af modellen. Det er en stillingtagen (kravet i
+    // `stt_routes_cover_the_supported_slugs`), ikke en måling — mini er
+    // ALDRIG kørt gennem voice-eval på dansk. Bliver `prompt` tavst ignoreret
+    // af den mindre model, er symptomet ringere genkendelse af kort-numre, og
+    // hverken proben eller nogen test her ville fange det.
+    SttRoute {
+        slug: "openai-mini",
+        label: "OpenAI mini",
+        endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
+        model: "gpt-4o-mini-transcribe",
+        supports_partials: true,
+        supports_domain_prompt: true,
+        key_slot: KEY_SLOT_OPENAI,
+    },
+];
 
 pub const ROUTER_ROUTES: &[RouterRoute] = &[
     RouterRoute {
@@ -168,15 +195,54 @@ pub fn warm_origins(stt: &SttRoute, router: &RouterRoute) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// OpenRouter-STT blev slettet 2026-07-29 (ejer-beslutning). Testen holder
-    /// fast i, at der er PRÆCIS én rute — kommer der en til, skal nogen tage
-    /// stilling til partials og domæne-prompt for den rute, og det er her det
-    /// bliver opdaget.
+    /// Listen er UDTOEMMENDE og ikke en laengde-check, fordi kravet fra
+    /// 2026-07-29 staar ved magt: en ny rute skal have et SVAR paa partials og
+    /// domaene-prompt, foer den skrives ind. Falder testen, er det fordi nogen
+    /// tilfoejede en rute uden at tage den stilling.
+    ///
+    /// OpenRouter-STT er stadig vaek, og det skal den blive — samme model, men
+    /// uden loebende tekst og uden domaene-ordlisten.
     #[test]
-    fn stt_has_exactly_one_route() {
+    fn stt_routes_cover_the_supported_slugs() {
         let slugs: Vec<&str> = STT_ROUTES.iter().map(|r| r.slug).collect();
-        assert_eq!(slugs, vec!["openai"]);
+        assert_eq!(slugs, vec!["openai", "openai-mini"]);
         assert!(stt_route("openrouter").is_none());
+    }
+
+    /// Mini findes for at kunne vaelge fart og pris frem for praecision.
+    /// Alt ANDET end modellen skal vaere identisk med den store rute: driver
+    /// endpoint eller flagene fra hinanden, er det en fejl — ikke en tuning-
+    /// knap. (At flagene ER sande for mini er en stillingtagen, se tabellen.)
+    #[test]
+    fn mini_differs_from_the_default_route_only_by_model() {
+        let full = stt_route(DEFAULT_STT_SLUG).expect("default stt route");
+        let mini = stt_route("openai-mini").expect("mini stt route");
+        assert_eq!(mini.model, "gpt-4o-mini-transcribe");
+        assert_ne!(mini.model, full.model);
+        assert_eq!(mini.endpoint, full.endpoint);
+        assert_eq!(mini.key_slot, full.key_slot);
+        // Baade "ens" OG "sande": et rent lighedstjek ville ogsaa bestaa hvis
+        // begge ruter mistede flagene, og saa var stemmen stum for alle.
+        assert_eq!(mini.supports_partials, full.supports_partials);
+        assert_eq!(mini.supports_domain_prompt, full.supports_domain_prompt);
+        assert!(mini.supports_partials);
+        assert!(mini.supports_domain_prompt);
+    }
+
+    /// Begge STT-ruter er OpenAI og deler noeglen — ellers kunne man vaelge en
+    /// rute, hvis noegle der ikke findes et felt til i UI'et.
+    ///
+    /// Bemaerk hvad testen IKKE beviser: `secrets::stt_api_key_from` slaar
+    /// HAARDKODET op i KEY_SLOT_OPENAI og laeser aldrig `route.key_slot`.
+    /// Feltet er i dag rent beskrivende paa STT-siden (eneste laeser er
+    /// noegle-badgen i Settings.tsx). Faar en STT-rute et andet slot, skal
+    /// `stt_api_key_from` roeres FOERST — ellers henter stemmen den forkerte
+    /// noegle, og hverken denne test eller nogen anden falder over det.
+    #[test]
+    fn both_stt_routes_use_the_openai_key_slot() {
+        for route in STT_ROUTES {
+            assert_eq!(route.key_slot, KEY_SLOT_OPENAI, "stt-rute {}", route.slug);
+        }
     }
 
     #[test]

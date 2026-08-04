@@ -897,6 +897,34 @@ fn workspace_response_carries_the_resolved_routes_but_settings_does_not() {
     assert_eq!(routes.routing.model, "gemini-3.1-flash-lite");
 }
 
+/// Slug'et skal resolvere til mini-ruten. `voice_routes.stt.model` er det
+/// eneste sted `stt.ts` faar modelnavnet fra — baade for pipelinen og for
+/// dikteringen — saa vaelger resolveringen forkert, taler brugeren videre til
+/// den store model uden at kunne se det.
+///
+/// Testen daekker RESOLVERINGEN alene; den kalder `resolve_voice_routes`
+/// direkte og roerer hverken serialisering eller TS-siden.
+#[test]
+fn mini_slug_resolves_all_the_way_to_the_mini_model() {
+    let settings = talminal_canvas_lib::workspace::Settings {
+        stt_provider: "openai-mini".to_string(),
+        ..Default::default()
+    };
+
+    let routes = talminal_canvas_lib::workspace::resolve_voice_routes(&settings);
+    assert_eq!(routes.stt.slug, "openai-mini");
+    assert_eq!(routes.stt.model, "gpt-4o-mini-transcribe");
+    // Samme noegle og samme endpoint som den store rute: valget maa ikke
+    // pludselig kraeve en konto brugeren ikke har.
+    assert_eq!(routes.stt.key_slot, "provider_key_openai");
+    assert_eq!(
+        routes.stt.endpoint,
+        "wss://api.openai.com/v1/realtime?intent=transcription"
+    );
+    assert!(routes.stt.supports_partials);
+    assert!(routes.stt.supports_domain_prompt);
+}
+
 #[test]
 fn worker_get_workspace_response() {
     if !is_worker("worker_get_workspace_response") {

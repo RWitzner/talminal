@@ -109,7 +109,8 @@ export interface RouterRoute {
   label: string;
   endpoint: string;
   model: string;
-  decoration: "none" | "vercel_gateway";
+  /** Spejler `providers::Decoration` (serde snake_case). */
+  decoration: "none" | "vercel_gateway" | "reasoning_off";
   hedge: boolean;
   key_slot: string;
 }
