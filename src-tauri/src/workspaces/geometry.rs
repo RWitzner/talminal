@@ -11,6 +11,25 @@ use std::sync::{Arc, Mutex};
 
 pub const DEBOUNCE_MS: u64 = 300;
 
+/// Vinduets erklaerede minimum, spejlet fra `tauri.conf.json`
+/// (`minWidth`/`minHeight` → tao's `min_inner_size`, altsaa samme maal som
+/// `inner_size()` og dermed som [`Rect`]s `w`/`h`).
+///
+/// Tallene staar to steder, fordi Tauri ikke eksponerer vinduets min-size paa
+/// et `&Window` — og fordi `placement_from` er en REN funktion (kontrakt B),
+/// der ikke maa slaa noget op. Aendrer du dem i konfigurationen, saa aendr dem
+/// her; testen `vaernet_bruger_vinduets_eget_minimum` fanger ikke en drift
+/// mellem de to filer.
+///
+/// Sammenligningen er FYSISKE pixels mod LOGISKE tal, og den skaevhed er med
+/// vilje konservativ: paa en skaerm skaleret over 100 % er den fysiske
+/// min-stoerrelse stoerre end den logiske, saa vaernet afviser aldrig en
+/// lovlig stoerrelse — det slipper hoejst en ulovlig igennem paa hoej DPI.
+/// Den vej er den rigtige at fejle til: at tabe en aegte placering ville vaere
+/// et synligt tab, at gemme en for lille er allerede daekket af at brugeren
+/// kan flytte vinduet én gang.
+const MIN_INNER_SIZE: (i32, i32) = (900, 600);
+
 /// **Positionen er OUTER, størrelsen er INNER — og det er ikke vilkårligt.**
 ///
 /// Målene skal spejle præcis de to Tauri-kald `surface::apply_placement` bruger,
@@ -86,6 +105,28 @@ pub fn placement_from(
         return Some(WindowPlacement {
             normal: previous?.normal,
             maximized: true,
+        });
+    }
+    // Degenereret rect: behandles som "intet at gemme", praecis som den
+    // maksimerede gren ovenfor — den forrige normal-rect bevares.
+    //
+    // MAALT 2026-08-04: en `window_geometry.json` stod med
+    // `normal: {x:2130, y:552, w:144, h:19}` og `maximized: true`. Vinduet
+    // aabnede maksimeret, og foerste gendan sprang til 144x19 — hvorefter
+    // DET resize-event skrev samme vaerdi tilbage. En envejsfaelde: én
+    // forbigaaende maaling gjorde vinduet permanent ubrugeligt, og den eneste
+    // udvej var at rette filen i haanden.
+    //
+    // Uden vaernet er enhver ikke-maksimeret maaling god nok, ogsaa dem der
+    // opstaar mens vinduet er ved at blive til, flyttes mellem skaerme med
+    // forskellig DPI, eller er minimeret. Hvad der udloeste den konkrete
+    // maaling er IKKE fundet — men det behoever det ikke vaere: en stoerrelse
+    // under vinduets eget minimum kan pr. konstruktion ikke vaere en
+    // stoerrelse brugeren har valgt, uanset hvor den kom fra.
+    if current.w < MIN_INNER_SIZE.0 || current.h < MIN_INNER_SIZE.1 {
+        return Some(WindowPlacement {
+            normal: previous?.normal,
+            maximized: false,
         });
     }
     Some(WindowPlacement {
@@ -537,18 +578,72 @@ mod tests {
 
     #[test]
     fn placement_from_ikke_maksimeret_bruger_outer_rect() {
-        let resultat = placement_from(false, (10, 20), (800, 600), None);
+        // 800x600 stod her foer vaernet. Den stoerrelse kan vinduet ikke
+        // ANTAGE — `minWidth` er 900 — saa testen hvilede paa en tilstand der
+        // ikke findes. 1200x800 er lovlig og tester praecis det samme.
+        let resultat = placement_from(false, (10, 20), (1200, 800), None);
         assert_eq!(
             resultat,
             Some(WindowPlacement {
                 normal: Rect {
                     x: 10,
                     y: 20,
-                    w: 800,
-                    h: 600
+                    w: 1200,
+                    h: 800
                 },
                 maximized: false,
             })
+        );
+    }
+
+    #[test]
+    fn degenereret_stoerrelse_bevarer_forrige_normal_rect() {
+        // Den MAALTE fejl (2026-08-04): 144x19 blev gemt som gendan-rect, og
+        // vinduet kunne derefter ikke gendannes til noget brugbart.
+        let forrige = WindowPlacement {
+            normal: Rect {
+                x: 100,
+                y: 100,
+                w: 1400,
+                h: 900,
+            },
+            maximized: true,
+        };
+        assert_eq!(
+            placement_from(false, (2130, 552), (144, 19), Some(forrige)),
+            Some(WindowPlacement {
+                normal: forrige.normal,
+                maximized: false,
+            })
+        );
+    }
+
+    #[test]
+    fn degenereret_stoerrelse_uden_forrige_gemmer_ingenting() {
+        // Ingen forrige placering at falde tilbage paa: at skrive den
+        // degenererede rect ville vaere at grundlaegge fejlen frem for at
+        // arve den. `None` lader den foerste LOVLIGE maaling saette baselinen.
+        assert_eq!(placement_from(false, (2130, 552), (144, 19), None), None);
+    }
+
+    #[test]
+    fn vaernet_bruger_vinduets_eget_minimum() {
+        // Graensen ligger PRAECIS paa minimum, ikke over: et vindue brugeren
+        // har trukket helt sammen til 900x600 er en aegte placering og skal
+        // bevares.
+        let paa_graensen = placement_from(false, (0, 0), MIN_INNER_SIZE, None);
+        assert!(paa_graensen.is_some(), "900x600 er en lovlig stoerrelse");
+
+        // Én pixel under paa hver akse er derimod umulig.
+        assert_eq!(
+            placement_from(false, (0, 0), (MIN_INNER_SIZE.0 - 1, 700), None),
+            None,
+            "for smal"
+        );
+        assert_eq!(
+            placement_from(false, (0, 0), (1200, MIN_INNER_SIZE.1 - 1), None),
+            None,
+            "for lav"
         );
     }
 
