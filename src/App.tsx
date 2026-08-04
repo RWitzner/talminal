@@ -60,7 +60,18 @@ import {
 import { createOpenAiSttClient, STT_DOMAIN_PROMPT } from "./voice/stt";
 import { loadReplyClips } from "./voice/clipAssets";
 import { createClipTts } from "./voice/clipTts";
-import { DEFAULT_PTT_HOTKEY as DEFAULT_VOICE_HOTKEY } from "./hotkeyDefaults";
+import {
+  DEFAULT_DICTATION_HOTKEY,
+  DEFAULT_PTT_HOTKEY as DEFAULT_VOICE_HOTKEY,
+} from "./hotkeyDefaults";
+import { createDictationSession } from "./voice/dictation";
+import {
+  describeBlockedTarget,
+  resolveDictationTarget,
+} from "./voice/dictationTarget";
+import { createHotkeyBridge } from "./voice/hotkeyBridge";
+import { createMicArbiter } from "./voice/micArbiter";
+import { emitDictationInsert } from "./dictationInsert";
 import {
   closeTraceFor,
   flushPerfTrace,
@@ -184,6 +195,20 @@ function pipelineSessionForHud(state: PipelineUiState): HudSessionState {
     case "speaking":
       return "speaking";
   }
+}
+
+/** Staar tekstmarkoeren i et chat-korts composer? I saa fald traad-id'et.
+ *
+ *  DOM-fokus er den mest direkte sandhed om hvor en diktering hoerer hjemme,
+ *  og for chat-kort er det den ENESTE: canvas' type-mode-fokus kan aldrig
+ *  pege paa dem (se voice/dictationTarget.ts' hoved-kommentar). `data-chat-card`
+ *  baerer traad-id'et — kortnavnet staar ingen steder i chat-kortets traeer. */
+function focusedChatThread(): string | null {
+  if (typeof document === "undefined") return null;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  if (!active.matches("[data-chat-input]")) return null;
+  return active.closest("[data-chat-card]")?.getAttribute("data-chat-card") ?? null;
 }
 
 function resolverFromResult(result: unknown): HudResolver | null {
@@ -784,6 +809,14 @@ export default function App() {
   const voiceReady = workspace !== null;
   const voiceHotkey =
     workspace?.settings?.ptt_hotkey?.trim() || DEFAULT_VOICE_HOTKEY;
+  const dictationHotkey =
+    workspace?.settings?.dictation_hotkey?.trim() || DEFAULT_DICTATION_HOTKEY;
+  // Via ref og IKKE via effektens deps: stemme-effekten river hele motoren ned
+  // og bygger den op igen naar dens deps skifter (pipeline.stop(),
+  // player.close(), alle lyttere af- og paamonteres). Laa flaget i deps, ville
+  // ét klik paa kontakten i indstillingerne koste den fulde teardown.
+  const dictationSubmitRef = useRef(false);
+  dictationSubmitRef.current = workspace?.settings?.dictation_submit === true;
   const voiceEngine =
     VITE_ENV?.VITE_VOICE_ENGINE ??
     workspace?.settings?.voice_engine ??
@@ -832,6 +865,7 @@ export default function App() {
     if (!voiceReady) return;
     let disposed = false;
     let unregisterWake: (() => void) | null = null;
+    let unregisterDictation: (() => void) | null = null;
     const player = createPcmPlayer();
     playerRef.current = player;
     const sounds = createSoundPlayer();
@@ -1024,71 +1058,148 @@ export default function App() {
         },
       });
 
+      // Diktering: samme mikrofon og samme STT som pipelinen, men uden
+      // router, dispatch og svarklip. Ordene gaar raat ind i det fokuserede
+      // korts composer — se voice/dictation.ts.
+      const dictation = createDictationSession({
+        stt: () => {
+          const route = voiceRoutesRef.current?.stt;
+          if (!route) throw new Error("Voice-ruten er ikke indlæst endnu");
+          return createOpenAiSttClient({
+            model: route.model,
+            endpoint: route.endpoint,
+            prompt: route.supports_domain_prompt ? STT_DOMAIN_PROMPT : null,
+          });
+        },
+        // SAMME capture-wrapper som pipelinen: uden den staar orben stille og
+        // der er intet start/stop-blip, saa brugeren ikke kan se at
+        // mikrofonen er aaben (mikrofon-sandheds-princippet ovenfor).
+        startCapture: feedbackCapture,
+        maxUtteranceMs: 60_000,
+        warm: () => {
+          void invoke("warm_voice_connections").catch(() => undefined);
+        },
+        onState(state) {
+          updateHud({ session: state === "idle" ? "idle" : "listening" });
+        },
+        onTranscript(text) {
+          startFreshTurn({
+            transcript: text,
+            responseText: "",
+            tool: null,
+            resolver: null,
+            error: null,
+            chain: null,
+          });
+        },
+        onEmpty() {
+          updateHud({ responseText: "Ingen lyd fanget", error: null });
+        },
+        onError(error) {
+          updateHud({ error: error.message });
+        },
+        async insert(text) {
+          const target = resolveDictationTarget({
+            chatInputThread: focusedChatThread(),
+            focusedCard: canvas.getFocusedCard(),
+            cards: cardsRef.current,
+          });
+          if (target.kind === "none") {
+            updateHud({ error: describeBlockedTarget(target.reason) });
+            return;
+          }
+          const submit = dictationSubmitRef.current;
+          if (target.kind === "terminal" && submit) {
+            // submit_prompt skriver SELV teksten og ejer koreografien med
+            // tekst + `\r` som to writes (submit.rs). Et paste foerst ville
+            // lande ordene to gange. Fejlkontrakten er vaerd at kende: den
+            // venter op til 15 s paa at agentens prompt er klar, og staar i
+            // koe bag en igangvaerende voice-dispatch.
+            await invoke("submit_prompt", { name: target.name, text });
+            updateHud({ responseText: `Sendt til ${target.name}`, error: null });
+            return;
+          }
+          emitDictationInsert({
+            name: target.name,
+            text,
+            submit: target.kind === "chat" && submit,
+          });
+        },
+      });
+
       updateHud({ session: "idle", error: null });
 
-      let nativePtt = false;
-      let nativePttReady = false;
-      let domPttActive = false;
+      // To genveje, én mikrofon. Reglerne — og hvorfor gaten ikke maa vaere
+      // "er den anden session idle" — bor i voice/micArbiter.ts.
+      const mic = createMicArbiter();
+
+      const pttBridge = createHotkeyBridge({
+        onPress() {
+          if (!mic.acquire("ptt")) return;
+          pipeline.press();
+        },
+        onRelease() {
+          if (!mic.release("ptt")) return;
+          pipeline.release();
+        },
+        onDebug: (message) => console.debug(message),
+        onWarn: (message) => console.warn(message),
+      });
+
+      const dictationBridge = createHotkeyBridge({
+        onPress() {
+          if (!mic.acquire("dictation")) return;
+          // Spiller pipelinen stadig et svarklip, skal det tie: brugeren vil
+          // tale NU. Samme hoeflighed som pipeline.press() viser sig selv.
+          if (pipeline.state() === "speaking") pipeline.cancel();
+          dictation.press();
+        },
+        onRelease() {
+          if (!mic.release("dictation")) return;
+          dictation.release();
+        },
+        onDebug: (message) => console.debug(message),
+        onWarn: (message) => console.warn(message),
+      });
+
       let unlistenNativePtt: UnlistenFn | null = null;
       try {
         if (isKeyboardBinding(voiceHotkey)) {
           unregisterWake = registerPttKey(voiceHotkey, {
-          onPress() {
-            if (nativePtt) {
-              // Doede-tryk-diagnostik (2026-07-20): DOM'en saa komboen, men
-              // polleren har primatet. Fyrer polleren ikke tilsvarende, er
-              // Rust-gaten/leverancen synderen (se wake_hotkey.rs-loggen).
-              console.debug("voice.ptt.dom_saw_combo_native_primacy");
-              return;
-            }
-            domPttActive = true;
-            pipeline.press();
-          },
-          onRelease() {
-            if (nativePtt) return;
-            domPttActive = false;
-            pipeline.release();
-            if (nativePttReady) nativePtt = true;
-          },
+            onPress: () => pttBridge.domPress(),
+            onRelease: () => pttBridge.domRelease(),
           });
         }
       } catch (error) {
         updateHud({ error: `Voice-hotkey fejlede: ${String(error)}` });
+      }
+      try {
+        if (isKeyboardBinding(dictationHotkey)) {
+          unregisterDictation = registerPttKey(dictationHotkey, {
+            onPress: () => dictationBridge.domPress(),
+            onRelease: () => dictationBridge.domRelease(),
+          });
+        }
+      } catch (error) {
+        updateHud({ error: `Diktér-hotkey fejlede: ${String(error)}` });
       }
 
       void (async () => {
         try {
           // Lytteren registreres FOER polleren startes (reviewer-P2: et tryk i
           // handoff-vinduet maa aldrig tabes — det er praecis "foerste tryk er
-          // doedt"-symptomet polleren skal dræbe). Gaten er domPttActive, ikke
-          // nativePtt: foerste native-event uden aktivt DOM-hold kraever selv
-          // primatet; residual-dubletter er harmloese pr. pipeline-no-op'erne.
+          // doedt"-symptomet polleren skal dræbe). Selve arbitrationen mellem
+          // DOM og poller bor i voice/hotkeyBridge.ts, hvor den er testet.
           const unlisten = await listen("wake-hotkey", (event) => {
             const payload = event.payload as {
               combo?: string;
               edge?: string;
             };
-            if (payload.combo !== "ptt") return;
-            if (domPttActive) {
-              // Polleren er fysisk sandhed (2026-07-20): en RELEASE-kant mens
-              // DOM-holdet staar aktivt beviser at DOM'ens keyup gik tabt
-              // (WebView2-leverance). Uden selvhealing var domPttActive laast
-              // for evigt og alle senere native kanter doede = "flere doede
-              // tryk i traek til naeste blur". En PRESS-kant under aktivt
-              // DOM-hold kan derimod KUN vaere samme holds ≤15 ms-duplikat
-              // (et stale hold var blevet healet af release-kanten foer den)
-              // — den skal fortsat ignoreres.
-              if (payload.edge === "release") {
-                console.warn("voice.ptt.dom_hold_stale_selfhealed");
-                domPttActive = false;
-                nativePtt = true;
-                pipeline.release();
-              }
-              return;
+            if (payload.edge !== "press" && payload.edge !== "release") return;
+            if (payload.combo === "ptt") pttBridge.nativeEdge(payload.edge);
+            else if (payload.combo === "dictation") {
+              dictationBridge.nativeEdge(payload.edge);
             }
-            nativePtt = true;
-            if (payload.edge === "press") pipeline.press();
-            else if (payload.edge === "release") pipeline.release();
           });
           if (disposed) {
             unlisten();
@@ -1096,8 +1207,9 @@ export default function App() {
           }
           unlistenNativePtt = unlisten;
           await invoke("configure_wake_hotkey", { accel: voiceHotkey });
-          nativePttReady = true;
-          if (!domPttActive) nativePtt = true;
+          pttBridge.markNativeReady();
+          await invoke("configure_dictation_hotkey", { accel: dictationHotkey });
+          dictationBridge.markNativeReady();
         } catch (error) {
           updateHud({
             error: `Wake-hotkey kunne ikke konfigureres: ${String(error)}`,
@@ -1105,24 +1217,35 @@ export default function App() {
         }
       })();
 
-      const onPipelineBlur = () => {
-        const state = pipeline.state();
-        if (state === "listening" || state === "finalizing") {
+      const onVoiceBlur = () => {
+        const pipelineState = pipeline.state();
+        if (pipelineState === "listening" || pipelineState === "finalizing") {
           pipeline.cancel();
+          mic.release("ptt");
+        }
+        // Uden den her stod et diktér-hold der mistede fokus i "listening"
+        // med mikrofonen aaben. registerPttKey's egen onBlur daekker kun
+        // DOM-vejen — polleren har ingen.
+        const dictationState = dictation.state();
+        if (dictationState === "listening" || dictationState === "finalizing") {
+          dictation.cancel();
+          mic.release("dictation");
         }
       };
-      window.addEventListener("blur", onPipelineBlur);
+      window.addEventListener("blur", onVoiceBlur);
 
     return () => {
       disposed = true;
       playerRef.current = null;
       unlistenNativePtt?.();
       unregisterWake?.();
-      window.removeEventListener("blur", onPipelineBlur);
+      unregisterDictation?.();
+      window.removeEventListener("blur", onVoiceBlur);
+      dictation.cancel();
       void sounds.close();
       void pipeline.stop().finally(() => player.close());
     };
-  }, [activeVoiceEngine, refresh, voiceHotkey, voiceReady]);
+  }, [activeVoiceEngine, dictationHotkey, refresh, voiceHotkey, voiceReady]);
 
   return (
     <AppShell

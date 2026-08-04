@@ -21,6 +21,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatCardInfo } from "./types";
+import {
+  DICTATION_INSERT_EVENT,
+  type DictationInsertDetail,
+} from "./dictationInsert";
 import { CARD_HEADER, CARD_NUMBER_BADGE, CARD_SHELL } from "./cardChrome";
 import { cardLabel } from "./cardLabel";
 import {
@@ -239,17 +243,50 @@ export function ChatCard({ card, fullscreen, onToggleFullscreen }: ChatCardProps
   const used = view?.hops_used ?? 0;
   const tone = hopTone(used, cap);
 
-  async function send(): Promise<void> {
-    const text = draft.trim();
-    if (!text) return;
+  /** `explicitText` findes for dikteringens skyld og er ikke kosmetik: uden
+   *  den laeser `send()` `draft` fra RENDER-closuren, saa et `setDraft(...)`
+   *  umiddelbart efterfulgt af `send()` i samme handler ville sende den GAMLE
+   *  kladde — og var composeren tom, ville `if (!text) return` ramme og
+   *  transskriptet forsvinde tavst. Returvaerdien lader dikteringen sige
+   *  sandheden i HUD'et; kortets egen fejl-tavshed nedenfor er bevidst og
+   *  bevarer kladden. */
+  async function send(explicitText?: string): Promise<boolean> {
+    const text = (explicitText ?? draft).trim();
+    if (!text) return false;
     try {
       await invoke("chat_thread_post", { thread: card.thread_id, text });
       setDraft(""); // Kladden ryddes KUN ved succes.
       await refresh();
+      return true;
     } catch {
       /* kladden bevares saa arbejdet ikke tabes */
+      return false;
     }
   }
+
+  // Diktering. To refs frem for deps: `send` og `draft` er nye hver render, og
+  // en effekt der afhang af dem ville af- og genregistrere lytteren ved hvert
+  // tastetryk i composeren.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  useEffect(() => {
+    const onDictationInsert = (event: Event) => {
+      const detail = (event as CustomEvent<DictationInsertDetail>).detail;
+      if (!detail || detail.name !== card.name) return;
+      // Teksten LAEGGES TIL. Dikterer man to gange i traek, er den anden
+      // saetning en tilfoejelse — ikke en overskrivning af den foerste.
+      const current = draftRef.current;
+      const next = current === "" ? detail.text : `${current} ${detail.text}`;
+      setDraft(next);
+      if (detail.submit) void sendRef.current(next);
+    };
+    window.addEventListener(DICTATION_INSERT_EVENT, onDictationInsert);
+    return () =>
+      window.removeEventListener(DICTATION_INSERT_EVENT, onDictationInsert);
+  }, [card.name]);
 
   return (
     <div style={styles.root} data-chat-card={card.thread_id} data-chat-state={state}>

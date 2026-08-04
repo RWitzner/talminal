@@ -86,6 +86,12 @@ export interface WorkspaceSettings {
   default_agent: string;
   stt_provider?: string;
   routing_provider?: string;
+  /** Diktér-genvejen. Optional af samme grund som de to ovenfor: en
+   *  settings.json fra før feltet fandtes leverer det ikke, og fladen falder
+   *  tilbage til `DEFAULT_DICTATION_HOTKEY`. */
+  dictation_hotkey?: string;
+  /** Skal dikteringen selv trykke Enter? Default (og udeladt) er `false`. */
+  dictation_submit?: boolean;
 }
 
 export interface SttRoute {

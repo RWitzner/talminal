@@ -17,6 +17,10 @@ import { cardColor } from "./colors";
 import { cardLabel } from "./cardLabel";
 import { ContextBadge } from "./ContextBadge";
 import { nudgeRepaint } from "./nudge";
+import {
+  DICTATION_INSERT_EVENT,
+  type DictationInsertDetail,
+} from "./dictationInsert";
 import { hexDump, isBracketedPaste, isTerminalReply } from "./terminalReply";
 import { attachTerminalClipboard } from "./terminalClipboard";
 import { writeClipboardText } from "./clipboard";
@@ -306,6 +310,21 @@ export function Card({
     };
     window.addEventListener(PREPARE_FRESH_SPAWN_EVENT, prepareFreshSpawn);
 
+    // Diktering: teksten indsaettes gennem xterms EGEN paste-vej, ikke med et
+    // raat write_pty. Det er den samme begrundelse som Ctrl+V's
+    // (terminalClipboard.ts): paste bevarer bracketed paste, saa en blok
+    // lander som ÉT stykke i agentens composer i stedet for at en newline
+    // midt i saetningen submitter for tidligt. Og fordi term.paste() flyder
+    // videre gennem onData-handleren nedenfor, er der stadig praecis EEN vej
+    // ind i pty'en — med uaendret source-klassifikation og gating.
+    const insertDictation = (event: Event) => {
+      const detail = (event as CustomEvent<DictationInsertDetail>).detail;
+      if (!detail || detail.name !== name) return;
+      if (!runningRef.current) return;
+      term.paste(detail.text);
+    };
+    window.addEventListener(DICTATION_INSERT_EVENT, insertDictation);
+
     // Review-fix (Task 9): ResizeObserver + debounce-timeren koerer videre
     // efter card-exit — runningRef-gaten sikrer, at en sen/debounced resize
     // efter exit (M10-flowet: Stop -> Frisk session) eller foer Start ikke
@@ -515,6 +534,7 @@ export function Card({
       observer.disconnect();
       dataDisposable.dispose();
       window.removeEventListener(PREPARE_FRESH_SPAWN_EVENT, prepareFreshSpawn);
+      window.removeEventListener(DICTATION_INSERT_EVENT, insertDictation);
       unlisteners.forEach((u) => u());
       unlisteners = [];
       syncSizeRef.current = null;

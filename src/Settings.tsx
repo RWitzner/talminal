@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import { HotkeyRecorder } from "./HotkeyRecorder";
 import {
+  DEFAULT_DICTATION_HOTKEY,
   DEFAULT_EXIT_TYPE_MODE_HOTKEY,
   DEFAULT_PTT_HOTKEY,
 } from "./hotkeyDefaults";
@@ -66,6 +67,14 @@ async function saveSettingsPatch(
       stt_provider: patch.stt_provider ?? current.stt_provider ?? "openai",
       routing_provider:
         patch.routing_provider ?? current.routing_provider ?? "vercel",
+      dictation_hotkey:
+        patch.dictation_hotkey ??
+        current.dictation_hotkey ??
+        DEFAULT_DICTATION_HOTKEY,
+      // `??` og ikke `||`: `false` er en gyldig vaerdi og maa ikke falde
+      // igennem til current.
+      dictation_submit:
+        patch.dictation_submit ?? current.dictation_submit ?? false,
     },
   });
 }
@@ -388,6 +397,103 @@ function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
         disabled={busy}
       />
       {note !== null && <div style={styles.hint}>{note}</div>}
+      {error !== null && <div style={styles.error}>{error}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Diktering: genvej + auto-send. Egen sektion frem for en raekke i
+// HotkeySection, fordi kontakten hoerer sammen med genvejen og ikke med
+// stemme-aktiveringen.
+// ---------------------------------------------------------------------------
+
+function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
+  const [hotkey, setHotkey] = useState(DEFAULT_DICTATION_HOTKEY);
+  const [submit, setSubmit] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    invoke<WorkspaceResponse>("get_workspace")
+      .then((ws) => {
+        if (!alive || ws.settings == null) return;
+        setHotkey(ws.settings.dictation_hotkey ?? DEFAULT_DICTATION_HOTKEY);
+        setSubmit(ws.settings.dictation_submit === true);
+      })
+      .catch((err) => {
+        if (alive) setError(String(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const save = async (patch: {
+    dictation_hotkey?: string;
+    dictation_submit?: boolean;
+  }) => {
+    if (busy) return;
+    const previous = { hotkey, submit };
+    if (patch.dictation_hotkey !== undefined) setHotkey(patch.dictation_hotkey);
+    if (patch.dictation_submit !== undefined) setSubmit(patch.dictation_submit);
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await saveSettingsPatch(patch);
+      await onSaved?.();
+      setSaved(true);
+    } catch (err) {
+      // Rust afviser bl.a. en genvej der deler tast med stemme-aktiveringen
+      // (wake_hotkey::collides). Fejlteksten er brugervendt og vises ordret.
+      setHotkey(previous.hotkey);
+      setSubmit(previous.submit);
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const note = doubleEffectNote(hotkey);
+
+  return (
+    <div style={styles.row}>
+      <div style={styles.rowHeader}>
+        <span style={styles.label}>Diktering</span>
+        {saved && <span style={{ ...styles.badge, ...styles.badgeSet }}>gemt</span>}
+      </div>
+      <div style={styles.rowLead}>
+        Hold nede og tal — teksten skrives i det kort du står i, uden at gå
+        gennem stemmekommandoerne.
+      </div>
+      <HotkeyRecorder
+        value={hotkey}
+        onChange={(accel) => save({ dictation_hotkey: accel })}
+        onReset={() => void save({ dictation_hotkey: DEFAULT_DICTATION_HOTKEY })}
+        disabled={busy}
+      />
+      {note !== null && <div style={styles.hint}>{note}</div>}
+      <label style={styles.toggleRow}>
+        <input
+          type="checkbox"
+          data-dictation-submit
+          checked={submit}
+          disabled={busy}
+          onChange={(e) => void save({ dictation_submit: e.target.checked })}
+        />
+        <span>Send automatisk når du slipper</span>
+      </label>
+      {/* Konsekvensen skrives ud frem for at kalde det en "hurtig tilstand":
+          uden den staar brugeren med en agent der koerer paa noget han ikke
+          naaede at laese. */}
+      <div style={styles.hint}>
+        Slået fra skriver dikteringen kun teksten, så du kan rette den og selv
+        trykke Enter. Slået til sendes den med det samme — også hvis den blev
+        hørt forkert.
+      </div>
       {error !== null && <div style={styles.error}>{error}</div>}
     </div>
   );
@@ -988,6 +1094,7 @@ export function Settings({
       {category === "voice" && (
         <>
           <HotkeySection onSaved={onSaved} />
+          <DictationSection onSaved={onSaved} />
           <MicrophoneSection />
           <VoiceProviderSection />
         </>
@@ -1196,6 +1303,14 @@ const styles: Record<string, CSSProperties> = {
     textAlign: "left",
   },
   hint: { fontSize: 11, color: "#718297", lineHeight: 1.5 },
+  toggleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 12,
+    color: "#c8d6e6",
+    cursor: "pointer",
+  },
   ok: { fontSize: 11, color: "#4dd6b7" },
   error: { fontSize: 11, color: "#ff9b93" },
 };

@@ -1607,7 +1607,15 @@ fn read_context_snapshots() -> Vec<context_hud::ContextSnapshot> {
 /// fallback. Se wake_hotkey.rs' modul-doc for hele rationalet.
 #[tauri::command]
 fn configure_wake_hotkey(accel: String) -> Result<(), String> {
-    wake_hotkey::set_accelerator(&accel)
+    wake_hotkey::set_accelerator(wake_hotkey::HotkeySlot::Ptt, &accel)
+}
+
+/// Dikterings-genvejen. Egen kommando frem for en slot-parameter paa
+/// `configure_wake_hotkey`: wiren for PTT'en forbliver dermed uaendret, og de
+/// to kald kan sendes uafhaengigt naar kun den ene genvej er skiftet.
+#[tauri::command]
+fn configure_dictation_hotkey(accel: String) -> Result<(), String> {
+    wake_hotkey::set_accelerator(wake_hotkey::HotkeySlot::Dictation, &accel)
 }
 
 #[tauri::command]
@@ -2108,6 +2116,7 @@ fn main() {
             read_usage_snapshot,
             read_context_snapshots,
             configure_wake_hotkey,
+            configure_dictation_hotkey,
             suspend_wake_hotkey,
             get_project,
             // Chat-kort (agent-til-agent, spec §6):

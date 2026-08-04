@@ -110,11 +110,30 @@ Playwright-MCP der peger på kortets eget CDP-endpoint.
 | Trin | Hvor |
 |---|---|
 | PTT-hotkey (niveau-sampling hvert 5 ms) | `src-tauri/src/wake_hotkey.rs` |
+| Arbitration mellem DOM-events og poller-kanter | `src/voice/hotkeyBridge.ts` |
 | Optagelse + resampling til PCM16 24 kHz | `src/voice/ptt.ts` |
 | Streamende dansk STT over WebSocket | `src/voice/stt.ts` |
 | Klassifikation til 1–10 intents (tvunget function-tool) | `src/voice/router.ts` |
 | Deterministisk dispatch til Tauri-kommandoer | `src/voice/dispatch.ts` |
 | Svar som ét af 14 forudindspillede klip | `src/voice/replies.ts` |
+
+**Dikteringen er den samme tur med de tre sidste led skåret af.** `src/voice/dictation.ts`
+genbruger `createPtt` — samme mikrofon, samme STT — men afleverer transskriptet råt i stedet
+for at route og dispatche det. Hvor det lander, afgøres af `voice/dictationTarget.ts`, og
+selve indsættelsen sker gennem ét window-event (`src/dictationInsert.ts`) med to modtagere:
+`Card.tsx` kalder `term.paste()`, `ChatCard.tsx` lægger til sin kladde. Begge composere er
+React-ejede, og det er derfor der er et event og ikke en ref.
+
+**Polleren har to slots**, ikke én: `HotkeySlot::{Ptt, Dictation}`, hver med sin
+kant-detektor, vk-cache og versions-tæller (`wake_hotkey.rs`). Tællerne er bevidst adskilte
+— en fælles ville lade en ændring af den ene genvej sluge release-kanten på et igangværende
+hold i den anden. `SUSPENDED` er derimod fælles, fordi `HotkeyRecorder` skal kunne gøre
+begge tavse mens den optager en ny binding. At to genveje ikke må dele trigger-tast
+håndhæves af `wake_hotkey::collides` og er **ikke** en lighedstest: combo-matchet er
+subset, så ét `Ctrl+Shift+Space`-tryk fyrer også en genvej bundet til `Ctrl+Space`.
+
+Kun én af de to må holde mikrofonen ad gangen. Ejerskabet følger holdet — ikke pipelinens
+tilstand, som er `speaking` længe efter tasten er sluppet — og gaten sidder i `App.tsx`.
 
 **Ruterne bor ét sted — men navnene gør ikke.** `providers.rs` er den eneste kilde til
 endpoints og modelnavne: `STT_ROUTES` (1 rute) og `ROUTER_ROUTES` (4 ruter). De når fladen
