@@ -38,7 +38,7 @@
 //!   foelger samme semantik (lagene SKAL matche ens — DOM-suppression og
 //!   poller-kanter deler grammatik).
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -565,6 +565,23 @@ impl ComboEdgeDetector {
         self.suppress_until_keyup = true;
     }
 
+    /// Tavshed indtil triggeren har vaeret sluppet EEN gang — uden at nulstille
+    /// noget andet.
+    ///
+    /// Skilt fra `reset()` fordi pad-genopdagelse skal kunne tie en gamepad-
+    /// binding uden at roere `armed`: en frakoblet pad laeses som "alt oppe"
+    /// (`PadState::default()`), saa den foerste vellykkede laesning efter at
+    /// headsettet forbinder kan vise triggeren allerede nede. Uden dette ville
+    /// den stigende kant vaere kunstig, og mikrofonen aabnede af sig selv i det
+    /// oejeblik Virtual Desktop kom op.
+    ///
+    /// `reset()` kan ikke bruges: den ville rydde `armed` paa en binding der
+    /// maaske ejer et igangvaerende hold, og `SlotArbiter` ville da skulle
+    /// udsende et syntetisk release for et hold brugeren stadig holder fysisk.
+    pub fn suppress_until_release(&mut self) {
+        self.suppress_until_keyup = true;
+    }
+
     /// Returnerer den press/release-kant der skal emitteres nu, hvis nogen.
     pub fn step(&mut self, combo: &KeyCombo, snapshot: &PollSnapshot) -> Step {
         if self.suppress_until_keyup {
@@ -623,6 +640,135 @@ impl ComboEdgeDetector {
     }
 }
 
+/// Bindinger pr. slot: én primaer og én valgfri alternativ.
+///
+/// To, ikke N: brugsmoenstret er "samme funktion, to fysiske steder" (mus ved
+/// skrivebordet, controller i headsettet), og en liste ville koste migrering af
+/// `settings.json` uden at daekke et behov der findes.
+pub const BINDINGS_PER_SLOT: usize = 2;
+
+/// Kanten en slot skal udsende. Skilt fra `Step`, som er PR. BINDING og ogsaa
+/// baerer diagnostik; det her er slottets samlede svar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    Press,
+    Release,
+}
+
+/// Hvad en slot besluttede i ét poll.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SlotOutcome {
+    /// Hoejst én kant pr. poll — to bindinger deler én mikrofon.
+    pub edge: Option<Edge>,
+    /// Hver bindings raa `Step`, saa polleren kan logge doede-tryk-diagnostik
+    /// uden at voldgiften skal kende til `eprintln!`.
+    pub steps: [Step; BINDINGS_PER_SLOT],
+}
+
+/// Voldgift mellem en slots to bindinger.
+///
+/// LIGGER HER, ikke i poller-traaden, af samme grund som `PollSnapshot` og
+/// `TriggerProbe` (se deres doc): ren data ind, ren beslutning ud, saa den kan
+/// testes uden Win32. Det er modulets vigtigste regel, og den her type er den
+/// mest kritiske logik i filen — taber den et release, staar mikrofonen aaben.
+///
+/// EJERSKAB: den binding der startede holdet ejer det til den slippes. En
+/// binding der ikke ejer kan hverken aabne eller lukke mikrofonen, og det er
+/// bevidst begge veje:
+/// - trykkes den anden binding midt i et hold, sker der intet (mikrofonen er
+///   allerede aaben — et andet Press ville aabne den to gange)
+/// - slippes den anden binding midt i et hold, sker der heller intet (brugeren
+///   holder stadig fysisk paa den foerste)
+///
+/// Naar ejeren slipper, er holdet slut selv om den anden binding stadig er
+/// nede. Den kan foerst fyre igen efter et fysisk slip — ellers ville en
+/// hvilende finger paa den anden trigger forlaenge optagelsen i det uendelige.
+#[derive(Debug, Default)]
+pub struct SlotArbiter {
+    detectors: [ComboEdgeDetector; BINDINGS_PER_SLOT],
+    held_by: Option<usize>,
+}
+
+impl SlotArbiter {
+    /// Ét poll for hele slotten.
+    ///
+    /// ALLE bindinger koeres hver gang, ogsaa den der ikke ejer: `step()` er
+    /// niveau-baseret, saa springer man en over, driver dens `trigger_held` fra
+    /// virkeligheden og den fyrer en falsk kant naeste gang den skal eje.
+    pub fn step(
+        &mut self,
+        combos: &[Option<KeyCombo>; BINDINGS_PER_SLOT],
+        shared: &PollSnapshot,
+        triggers_down: [bool; BINDINGS_PER_SLOT],
+    ) -> SlotOutcome {
+        let mut edge = None;
+        let mut steps = [Step::None; BINDINGS_PER_SLOT];
+        for i in 0..BINDINGS_PER_SLOT {
+            let Some(combo) = combos[i] else { continue };
+            let snapshot = shared.with_trigger(triggers_down[i]);
+            let step = self.detectors[i].step(&combo, &snapshot);
+            steps[i] = step;
+            match step {
+                Step::Press if self.held_by.is_none() => {
+                    self.held_by = Some(i);
+                    edge = Some(Edge::Press);
+                }
+                Step::Release if self.held_by == Some(i) => {
+                    self.held_by = None;
+                    edge = Some(Edge::Release);
+                }
+                _ => {}
+            }
+        }
+        SlotOutcome { edge, steps }
+    }
+
+    /// Nulstil ved bindings-skift eller suspension.
+    ///
+    /// Returnerer `Some(Edge::Release)` hvis et hold var i gang. Det release
+    /// SKAL udsendes, og det er ikke kosmetik — begge naive alternativer er
+    /// vaerre end ingen nulstilling:
+    /// - uden nulstilling laases slotten PERMANENT: `reset()` saetter
+    ///   `suppress_until_keyup`, saa ejerens detektor returnerer aldrig
+    ///   `Release` igen, og `held_by` staar for evigt
+    /// - med nulstilling men uden release faar frontenden aldrig sit release,
+    ///   og mikrofonen staar aaben
+    ///
+    /// Vejen ind er triviel: `configure_wake_hotkey` kaldes ved hver mount, og
+    /// `set_suspended` bumper begge versionstaellere. Hold PTT nede og aabn
+    /// indstillingerne.
+    pub fn reset(&mut self) -> Option<Edge> {
+        for detector in &mut self.detectors {
+            detector.reset();
+        }
+        self.held_by.take().map(|_| Edge::Release)
+    }
+
+    /// Ti gamepad-bindinger indtil deres trigger har vaeret sluppet.
+    ///
+    /// Kaldes naar en pad dukker op igen. Roerer ALDRIG `held_by`, og det er
+    /// sikkert: en gamepad-binding kan ikke eje holdet mens pad'en er vaek.
+    /// Forsvinder pad'en midt i et hold, laeses den som `PadState::default()`
+    /// -> `trigger_down = false` -> faldende kant -> `Release` ad den normale
+    /// vej, som rydder ejerskabet. Ejer musen holdet naar headsettet forbinder,
+    /// fortsaetter det derfor uforstyrret.
+    pub fn suppress_pad_bindings(
+        &mut self,
+        combos: &[Option<KeyCombo>; BINDINGS_PER_SLOT],
+    ) {
+        for (i, combo) in combos.iter().enumerate() {
+            if matches!(combo, Some(c) if matches!(c.trigger, Trigger::Gamepad { .. })) {
+                self.detectors[i].suppress_until_release();
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn held_by(&self) -> Option<usize> {
+        self.held_by
+    }
+}
+
 // --- Slots ------------------------------------------------------------------
 
 /// Antal uafhaengige genveje polleren holder.
@@ -667,15 +813,46 @@ impl HotkeySlot {
 
 // --- Delt tilstand (kommando-traad skriver, poller-traad laeser) ------------
 
-static COMBOS: Mutex<[Option<KeyCombo>; SLOT_COUNT]> = Mutex::new([None; SLOT_COUNT]);
-/// Bumpes ved hver accelerator-aendring: polleren nulstiller sin kant-tilstand
-/// saa et hold paatvunget over en konfigurations-aendring ikke fyrer forkert.
+/// En slots bindinger OG dens versionstaeller under samme laas.
 ///
-/// EEN TAELLER PR. SLOT, og det er ikke kosmetik: `reset()` saetter
-/// `suppress_until_keyup`, saa en faelles taeller ville lade en aendring af den
-/// ene genvej sluge release-kanten paa et IGANGVAERENDE hold i den anden.
-/// Frontenden ville aldrig faa sit release, og mikrofonen stod aaben.
-static COMBO_VERSIONS: [AtomicU64; SLOT_COUNT] = [AtomicU64::new(0), AtomicU64::new(0)];
+/// Taelleren laa foer i en separat `AtomicU64`, og det var en race: polleren
+/// laeste versionen FOER den laaste `COMBOS`, mens skriveren skrev `COMBOS`
+/// FOER den bumpede — saa der fandtes ét poll hvor nye kombo'er blev koert mod
+/// gammel detektor-tilstand. At bumpe foer skrivningen loeser det ikke, det
+/// vender racen om: polleren ville da nulstille paa den GAMLE binding og aldrig
+/// se den nye. Kun faelles laas lukker den.
+///
+/// Prisen er at laasen nu tages foer suspensions-gaten, saa polleren ikke
+/// laengere kan `continue` uden at laese noget som helst. En ukontenderet
+/// mutex hver 5 ms er billigere end den race.
+#[derive(Clone, Copy, Debug)]
+struct SlotBindings {
+    combos: [Option<KeyCombo>; BINDINGS_PER_SLOT],
+    /// Bumpes ved hver accelerator-aendring: polleren nulstiller sin kant-
+    /// tilstand saa et hold paatvunget over en konfigurations-aendring ikke
+    /// fyrer forkert.
+    ///
+    /// EEN TAELLER PR. SLOT, og det er ikke kosmetik: `reset()` saetter
+    /// `suppress_until_keyup`, saa en faelles taeller ville lade en aendring af
+    /// den ene genvej sluge release-kanten paa et IGANGVAERENDE hold i den
+    /// anden. Frontenden ville aldrig faa sit release, og mikrofonen stod
+    /// aaben.
+    version: u64,
+}
+
+impl SlotBindings {
+    const EMPTY: Self = Self {
+        combos: [None; BINDINGS_PER_SLOT],
+        version: 0,
+    };
+
+    fn is_empty(&self) -> bool {
+        self.combos.iter().all(Option::is_none)
+    }
+}
+
+static COMBOS: Mutex<[SlotBindings; SLOT_COUNT]> =
+    Mutex::new([SlotBindings::EMPTY; SLOT_COUNT]);
 /// Faelles for begge slots: `HotkeyRecorder` suspenderer mens brugeren optager
 /// en NY genvej, og da skal ingen af dem fyre.
 static SUSPENDED: AtomicBool = AtomicBool::new(false);
@@ -691,21 +868,51 @@ static POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 /// At suspensionen ryddes er BEVIDST (testet nedenfor): kommandoen kaldes ved
 /// hver mount, og det er den vej en suspension der blev haengende — fordi
 /// indstillingsvinduet forsvandt midt i en optagelse — bliver helet igen.
-pub fn set_accelerator(slot: HotkeySlot, accel: &str) -> Result<(), String> {
-    let combo = parse_accelerator(accel)?;
+/// Begge bindinger saettes i ÉT kald, saa versionen bumpes én gang.
+///
+/// To separate kald ville give et poll hvor kun den ene binding var skiftet —
+/// og polleren ville nulstille to gange for én brugerhandling.
+///
+/// `alt` er `None` naar der ingen alternativ binding er. Tomme strenge er
+/// kalderens ansvar at have oversat til `None` foerst: `parse_accelerator("")`
+/// er en FEJL efter den delte grammatik (se `hotkey-grammar.fixtures.json`),
+/// ikke en maade at sige "ingen binding" paa.
+pub fn set_accelerators(
+    slot: HotkeySlot,
+    primary: &str,
+    alt: Option<&str>,
+) -> Result<(), String> {
+    let primary = parse_accelerator(primary)?;
+    let alt = alt.map(parse_accelerator).transpose()?;
+    if let Some(alt) = alt {
+        if collides(&primary, &alt) {
+            return Err(format!(
+                "{}s to genveje maa ikke bruge samme tast — vaelg to forskellige",
+                slot.label()
+            ));
+        }
+    }
     let mut slots = COMBOS.lock().map_err(|e| e.to_string())?;
-    slots[slot.index()] = Some(combo);
-    COMBO_VERSIONS[slot.index()].fetch_add(1, Ordering::Release);
+    let entry = &mut slots[slot.index()];
+    entry.combos = [Some(primary), alt];
+    entry.version = entry.version.wrapping_add(1);
     SUSPENDED.store(false, Ordering::Release);
     Ok(())
 }
 
+/// Bekvemmelighed for de mange kaldsteder (isaer tests) der kun saetter én.
+pub fn set_accelerator(slot: HotkeySlot, accel: &str) -> Result<(), String> {
+    set_accelerators(slot, accel, None)
+}
+
 pub fn set_suspended(suspended: bool) {
     SUSPENDED.store(suspended, Ordering::Release);
-    // Begge detektorer nulstilles: et hold der spaender hen over suspensionen
-    // maa ikke fyre naar den ophaeves — uanset hvilken genvej det var.
-    for version in &COMBO_VERSIONS {
-        version.fetch_add(1, Ordering::Release);
+    // Begge slots nulstilles: et hold der spaender hen over suspensionen maa
+    // ikke fyre naar den ophaeves — uanset hvilken genvej det var.
+    if let Ok(mut slots) = COMBOS.lock() {
+        for entry in slots.iter_mut() {
+            entry.version = entry.version.wrapping_add(1);
+        }
     }
 }
 
@@ -756,26 +963,48 @@ fn read_pad_state(index: u32) -> PadState {
 #[derive(Default)]
 struct PadReader {
     skip_polls: u32,
+    was_connected: bool,
+}
+
+/// Én pad-laesning, med det signal polleren ikke kan udlede selv.
+#[cfg(windows)]
+struct PadRead {
+    state: PadState,
+    /// Sand i praecis det poll hvor en pad dukker op efter at have vaeret vaek.
+    ///
+    /// Findes fordi en frakoblet pad laeses som "alt oppe": forbinder Virtual
+    /// Desktop mens brugeren allerede holder triggeren, ser detektoren en
+    /// stigende kant der aldrig fandt sted, og mikrofonen aabner af sig selv.
+    reappeared: bool,
 }
 
 #[cfg(windows)]
 impl PadReader {
     /// `needed` er falsk naar ingen slot har en gamepad-binding — da kaldes
     /// XInput ALDRIG, og brugere uden controller betaler intet.
-    fn read(&mut self, needed: bool) -> PadState {
+    fn read(&mut self, needed: bool) -> PadRead {
         if !needed {
             self.skip_polls = 0;
-            return PadState::default();
+            self.was_connected = false;
+            return PadRead {
+                state: PadState::default(),
+                reappeared: false,
+            };
         }
         if self.skip_polls > 0 {
             self.skip_polls -= 1;
-            return PadState::default();
+            return PadRead {
+                state: PadState::default(),
+                reappeared: false,
+            };
         }
         let state = read_pad_state(0);
         if !state.connected {
             self.skip_polls = PAD_RESCAN_POLLS;
         }
-        state
+        let reappeared = state.connected && !self.was_connected;
+        self.was_connected = state.connected;
+        PadRead { state, reappeared }
     }
 }
 
@@ -862,33 +1091,45 @@ pub fn spawn_wake_poller(app: AppHandle) {
             unsafe {
                 windows_sys::Win32::Media::timeBeginPeriod(1);
             }
-            let mut detectors: [ComboEdgeDetector; SLOT_COUNT] = Default::default();
-            let mut vk_caches: [TriggerVkCache; SLOT_COUNT] = Default::default();
+            let mut arbiters: [SlotArbiter; SLOT_COUNT] = Default::default();
+            let mut vk_caches: [[TriggerVkCache; BINDINGS_PER_SLOT]; SLOT_COUNT] =
+                Default::default();
             let mut pad_reader = PadReader::default();
-            let mut seen_versions =
-                HotkeySlot::ALL.map(|slot| COMBO_VERSIONS[slot.index()].load(Ordering::Acquire));
+            let mut seen_versions = [0u64; SLOT_COUNT];
             loop {
                 thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                // Versions-tjekket ligger FOER suspensions-gaten, praecis som
-                // da der kun var een slot: `set_suspended` bumper selv, saa
-                // nulstillingen skal naa detektoren ogsaa naar vi er tavse.
+                // Bindinger OG versioner under samme laas — se `SlotBindings`.
+                // Laasen tages derfor foer suspensions-gaten, hvor versions-
+                // tjekket altid har ligget: `set_suspended` bumper selv, saa
+                // nulstillingen skal naa arbitren ogsaa naar vi er tavse.
+                let bindings = match COMBOS.lock() {
+                    Ok(slots) => *slots,
+                    Err(_) => continue,
+                };
                 for slot in HotkeySlot::ALL {
                     let i = slot.index();
-                    let version = COMBO_VERSIONS[i].load(Ordering::Acquire);
-                    if version != seen_versions[i] {
-                        seen_versions[i] = version;
-                        detectors[i].reset();
-                        vk_caches[i] = TriggerVkCache::default();
+                    if bindings[i].version == seen_versions[i] {
+                        continue;
+                    }
+                    seen_versions[i] = bindings[i].version;
+                    vk_caches[i] = Default::default();
+                    // Var et hold i gang, DOER det her — og frontenden skal
+                    // vide det. Uden dette release staar mikrofonen aaben, og
+                    // slotten kan aldrig fyre igen. Se `SlotArbiter::reset`.
+                    if arbiters[i].reset().is_some() {
+                        let _ = app.emit(
+                            WAKE_EVENT,
+                            WakeHotkeyEvent {
+                                combo: slot.wire_name(),
+                                edge: "release",
+                            },
+                        );
                     }
                 }
                 if SUSPENDED.load(Ordering::Acquire) {
                     continue;
                 }
-                let combos = match COMBOS.lock() {
-                    Ok(slots) => *slots,
-                    Err(_) => continue,
-                };
-                if combos.iter().all(Option::is_none) {
+                if bindings.iter().all(SlotBindings::is_empty) {
                     continue;
                 }
                 let shared = read_shared_snapshot();
@@ -896,27 +1137,37 @@ pub fn spawn_wake_poller(app: AppHandle) {
                 // samme grund som modifiers deles (se `read_shared_snapshot`):
                 // to slots kan ikke give to forskellige svar om den samme
                 // fysiske controller.
-                let needs_pad = combos
-                    .iter()
-                    .flatten()
-                    .any(|c| matches!(c.trigger, Trigger::Gamepad { .. }));
+                let needs_pad = bindings.iter().any(|b| {
+                    b.combos
+                        .iter()
+                        .flatten()
+                        .any(|c| matches!(c.trigger, Trigger::Gamepad { .. }))
+                });
                 let pad = pad_reader.read(needs_pad);
                 for slot in HotkeySlot::ALL {
                     let i = slot.index();
-                    let Some(combo) = combos[i] else { continue };
-                    let (probe, warning) = vk_caches[i].probe_for(&combo.trigger, &Win32Resolver);
-                    if let Some(warning) = warning {
-                        let named = format!("{}: {warning}", slot.label());
-                        eprintln!("[wake-hotkey/{}] {warning}", slot.wire_name());
-                        publish_layout_warning(named);
+                    let combos = &bindings[i].combos;
+                    if pad.reappeared {
+                        arbiters[i].suppress_pad_bindings(combos);
                     }
-                    let trigger_down = match probe {
-                        TriggerProbe::Vk(vk) => vk != 0 && is_vk_down(vk),
-                        TriggerProbe::Pad(input) => pad.is_down(input),
-                    };
-                    let snapshot = shared.with_trigger(trigger_down);
-                    match detectors[i].step(&combo, &snapshot) {
-                        Step::Press => {
+                    let mut triggers_down = [false; BINDINGS_PER_SLOT];
+                    for (b, combo) in combos.iter().enumerate() {
+                        let Some(combo) = combo else { continue };
+                        let (probe, warning) =
+                            vk_caches[i][b].probe_for(&combo.trigger, &Win32Resolver);
+                        if let Some(warning) = warning {
+                            let named = format!("{}: {warning}", slot.label());
+                            eprintln!("[wake-hotkey/{}] {warning}", slot.wire_name());
+                            publish_layout_warning(named);
+                        }
+                        triggers_down[b] = match probe {
+                            TriggerProbe::Vk(vk) => vk != 0 && is_vk_down(vk),
+                            TriggerProbe::Pad(input) => pad.state.is_down(input),
+                        };
+                    }
+                    let outcome = arbiters[i].step(combos, &shared, triggers_down);
+                    match outcome.edge {
+                        Some(Edge::Press) => {
                             crate::perf_mark_background!(
                                 "voice.ptt.press_sampled",
                                 serde_json::json!({
@@ -932,7 +1183,7 @@ pub fn spawn_wake_poller(app: AppHandle) {
                                 },
                             );
                         }
-                        Step::Release => {
+                        Some(Edge::Release) => {
                             crate::perf_mark_background!(
                                 "voice.ptt.release_sampled",
                                 serde_json::json!({
@@ -948,28 +1199,37 @@ pub fn spawn_wake_poller(app: AppHandle) {
                                 },
                             );
                         }
-                        Step::SuppressedUnfocused => {
-                            // Doede-tryk-diagnostik: rigtigt kombo-tryk, gate
-                            // lukket. Ses denne samtidig med at brugeren kigger
-                            // paa canvas, er fokus-maalingen forkert.
-                            eprintln!(
-                                "[wake-hotkey/{}] kombo-tryk set, men canvas er ikke forgrundsvindue — kanten kasseret",
-                                slot.wire_name()
-                            );
+                        None => {}
+                    }
+                    for step in outcome.steps {
+                        match step {
+                            Step::SuppressedUnfocused => {
+                                // Doede-tryk-diagnostik: rigtigt kombo-tryk,
+                                // gate lukket. Ses denne samtidig med at
+                                // brugeren kigger paa canvas, er fokus-
+                                // maalingen forkert.
+                                eprintln!(
+                                    "[wake-hotkey/{}] kombo-tryk set, men canvas er ikke forgrundsvindue — kanten kasseret",
+                                    slot.wire_name()
+                                );
+                            }
+                            Step::SuppressedAltGr => {
+                                eprintln!(
+                                    "[wake-hotkey/{}] kombo-tryk set, men hoejre Alt (AltGr) er nede — kanten kasseret",
+                                    slot.wire_name()
+                                );
+                            }
+                            Step::SuppressedModifierDown => {
+                                eprintln!(
+                                    "[wake-hotkey/{}] bar binding: trigger nede, men en modifier diskvalificerede det eksakte match",
+                                    slot.wire_name()
+                                );
+                            }
+                            Step::Press
+                            | Step::Release
+                            | Step::SuppressedUnfocusedQuiet
+                            | Step::None => {}
                         }
-                        Step::SuppressedAltGr => {
-                            eprintln!(
-                                "[wake-hotkey/{}] kombo-tryk set, men hoejre Alt (AltGr) er nede — kanten kasseret",
-                                slot.wire_name()
-                            );
-                        }
-                        Step::SuppressedModifierDown => {
-                            eprintln!(
-                                "[wake-hotkey/{}] bar binding: trigger nede, men en modifier diskvalificerede det eksakte match",
-                                slot.wire_name()
-                            );
-                        }
-                        Step::SuppressedUnfocusedQuiet | Step::None => {}
                     }
                 }
             }
@@ -1007,6 +1267,207 @@ mod tests {
             window_focused: true,
             ..PollSnapshot::default()
         }
+    }
+
+    // --- SlotArbiter: to bindinger, én mikrofon ---------------------------
+
+    /// M4 + LT, praecis Robins opsaetning: mus ved skrivebordet, controller i
+    /// headsettet. Begge er bare bindinger.
+    fn two_bare_bindings() -> [Option<KeyCombo>; BINDINGS_PER_SLOT] {
+        [
+            Some(parse_accelerator("Mouse4").expect("mouse4")),
+            Some(parse_accelerator("GamepadLT").expect("lt")),
+        ]
+    }
+
+    fn focused() -> PollSnapshot {
+        PollSnapshot {
+            window_focused: true,
+            ..PollSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn en_binding_alene_giver_ét_press_og_ét_release() {
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
+        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(arbiter.held_by(), None);
+    }
+
+    #[test]
+    fn begge_bindinger_nede_giver_kun_ét_press() {
+        // Kernen i hele featuren: to bindinger deler EEN mikrofon. Aabnede
+        // begge, ville STT-sessionen startes to gange.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(arbiter.held_by(), Some(0));
+        // Den anden binding trykkes midt i holdet — intet maa ske.
+        assert_eq!(arbiter.step(&combos, &shared, [true, true]).edge, None);
+        assert_eq!(arbiter.held_by(), Some(0));
+    }
+
+    #[test]
+    fn den_ikke_ejende_binding_kan_ikke_lukke_holdet() {
+        // Slippes LT mens M4 stadig holdes, holder brugeren stadig fysisk —
+        // et release her ville afbryde midt i en saetning.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        arbiter.step(&combos, &shared, [true, false]);
+        arbiter.step(&combos, &shared, [true, true]);
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
+        assert_eq!(arbiter.held_by(), Some(0));
+        // Foerst naar EJEREN slipper, er holdet slut.
+        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+    }
+
+    #[test]
+    fn ejeren_slipper_foerst_afslutter_holdet() {
+        // M4 ned -> LT ned -> M4 op. Holdet er slut selv om LT stadig er nede,
+        // og LT maa ikke kunne overtage: en hvilende finger paa den anden
+        // trigger ville ellers forlaenge optagelsen i det uendelige.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        arbiter.step(&combos, &shared, [true, false]);
+        arbiter.step(&combos, &shared, [true, true]);
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Release));
+        assert_eq!(arbiter.held_by(), None);
+        // LT er stadig nede — men den fyrer ikke uden et fysisk slip.
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, None);
+        assert_eq!(arbiter.held_by(), None);
+        // Slip og tryk igen: nu ejer den.
+        arbiter.step(&combos, &shared, [false, false]);
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+        assert_eq!(arbiter.held_by(), Some(1));
+    }
+
+    #[test]
+    fn alt_bindingen_kan_eje_holdet_alene() {
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+        assert_eq!(arbiter.held_by(), Some(1));
+        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+    }
+
+    #[test]
+    fn reset_midt_i_et_hold_giver_et_syntetisk_release() {
+        // Uden dette release staar mikrofonen aaben, og slotten kan ALDRIG
+        // fyre igen: reset() saetter suppress_until_keyup, saa ejerens
+        // detektor returnerer aldrig Release, og held_by staar for evigt.
+        // Vejen ind er triviel — hold PTT nede og aabn indstillingerne.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        arbiter.step(&combos, &shared, [true, false]);
+        assert_eq!(arbiter.reset(), Some(Edge::Release));
+        assert_eq!(arbiter.held_by(), None);
+        // Og slotten er ikke doedlaast bagefter.
+        arbiter.step(&combos, &shared, [false, false]);
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+    }
+
+    #[test]
+    fn reset_uden_hold_giver_ingen_kant() {
+        let mut arbiter = SlotArbiter::default();
+        assert_eq!(arbiter.reset(), None);
+    }
+
+    #[test]
+    fn pad_genopdagelse_fyrer_ikke_naar_triggeren_allerede_er_nede() {
+        // En frakoblet pad laeses som "alt oppe". Forbinder Virtual Desktop
+        // mens brugeren allerede holder triggeren, ville detektoren ellers se
+        // en stigende kant der aldrig fandt sted.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        arbiter.suppress_pad_bindings(&combos);
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, None);
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, None);
+        // Efter et fysisk slip virker den igen.
+        arbiter.step(&combos, &shared, [false, false]);
+        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+    }
+
+    #[test]
+    fn pad_genopdagelse_roerer_ikke_et_hold_musen_ejer() {
+        // Praecis Robins overgang: han holder M4 ved skrivebordet, og
+        // headsettet forbinder. Holdet maa ikke afbrydes.
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        arbiter.suppress_pad_bindings(&combos);
+        assert_eq!(arbiter.held_by(), Some(0));
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
+        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+    }
+
+    #[test]
+    fn suppress_roerer_kun_gamepad_bindinger() {
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let shared = focused();
+        arbiter.suppress_pad_bindings(&combos);
+        // Musen er upaavirket.
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+    }
+
+    #[test]
+    fn en_tom_alt_binding_er_bare_én_binding() {
+        let mut arbiter = SlotArbiter::default();
+        let combos = [Some(parse_accelerator("Mouse4").expect("mouse4")), None];
+        let shared = focused();
+        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+    }
+
+    #[test]
+    fn fokus_gaten_gaelder_begge_bindinger() {
+        let mut arbiter = SlotArbiter::default();
+        let combos = two_bare_bindings();
+        let unfocused = PollSnapshot::default();
+        assert_eq!(arbiter.step(&combos, &unfocused, [true, true]).edge, None);
+        assert_eq!(arbiter.held_by(), None);
+    }
+
+    #[test]
+    fn en_slot_maa_ikke_have_to_ens_bindinger() {
+        with_global_state(|| {
+            let err = set_accelerators(HotkeySlot::Ptt, "Mouse4", Some("Mouse4"))
+                .expect_err("samme tast i begge felter skal afvises");
+            assert!(err.contains("samme tast"), "{err}");
+        });
+    }
+
+    #[test]
+    fn lt_og_rt_maa_gerne_sidde_i_samme_slot() {
+        with_global_state(|| {
+            set_accelerators(HotkeySlot::Ptt, "GamepadLT", Some("GamepadRT"))
+                .expect("LT og RT er forskellige triggere");
+        });
+    }
+
+    #[test]
+    fn begge_bindinger_bumper_versionen_én_gang() {
+        // To separate kald ville give et poll hvor kun den ene var skiftet.
+        with_global_state(|| {
+            let before = slot_versions();
+            set_accelerators(HotkeySlot::Ptt, "Mouse4", Some("GamepadLT")).expect("ptt");
+            let after = slot_versions();
+            assert_eq!(
+                after[HotkeySlot::Ptt.index()],
+                before[HotkeySlot::Ptt.index()] + 1
+            );
+        });
     }
 
     #[test]
@@ -1592,6 +2053,13 @@ mod tests {
     /// integrationstestene med `common::serial()`.)
     static GLOBAL_STATE: Mutex<()> = Mutex::new(());
 
+    /// Versionstaellerne bor nu inde i `COMBOS` (se `SlotBindings`), saa de
+    /// laeses under samme laas som bindingerne.
+    fn slot_versions() -> [u64; SLOT_COUNT] {
+        let slots = *COMBOS.lock().expect("lock");
+        HotkeySlot::ALL.map(|s| slots[s.index()].version)
+    }
+
     fn with_global_state<T>(body: impl FnOnce() -> T) -> T {
         let guard = GLOBAL_STATE.lock().unwrap_or_else(|e| e.into_inner());
         let out = body();
@@ -1621,14 +2089,14 @@ mod tests {
             set_accelerator(HotkeySlot::Dictation, "Ctrl+Shift+KeyD").expect("dictation");
             let slots = *COMBOS.lock().expect("lock");
             assert_eq!(
-                slots[HotkeySlot::Ptt.index()]
+                slots[HotkeySlot::Ptt.index()].combos[0]
                     .expect("ptt-kombo")
                     .trigger
                     .code(),
                 "Space"
             );
             assert_eq!(
-                slots[HotkeySlot::Dictation.index()]
+                slots[HotkeySlot::Dictation.index()].combos[0]
                     .expect("dikterings-kombo")
                     .trigger
                     .code(),
@@ -1645,9 +2113,9 @@ mod tests {
         // release-kant — frontenden fik aldrig sit release, og mikrofonen
         // stod aaben indtil brugeren trykkede forfra.
         with_global_state(|| {
-            let before = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            let before = slot_versions();
             set_accelerator(HotkeySlot::Ptt, "Alt+KeyQ").expect("ptt");
-            let after = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            let after = slot_versions();
             assert!(
                 after[HotkeySlot::Ptt.index()] > before[HotkeySlot::Ptt.index()],
                 "ptt-slotten skal bumpe sin egen taeller"
@@ -1663,10 +2131,10 @@ mod tests {
     #[test]
     fn suspension_nulstiller_begge_slots() {
         with_global_state(|| {
-            let before = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            let before = slot_versions();
             set_suspended(true);
             assert!(is_suspended());
-            let during = HotkeySlot::ALL.map(|s| COMBO_VERSIONS[s.index()].load(Ordering::Acquire));
+            let during = slot_versions();
             for slot in HotkeySlot::ALL {
                 assert!(
                     during[slot.index()] > before[slot.index()],

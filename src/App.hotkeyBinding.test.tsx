@@ -77,6 +77,8 @@ it("registrerer ikke DOM-lytteren for en muse-binding", async () => {
   await mount();
   expect(mocks.invoke).toHaveBeenCalledWith("configure_wake_hotkey", {
     accel: "Mouse4",
+    // Wiren baerer nu ogsaa den valgfrie ANDEN binding. `null` = ingen.
+    alt: null,
   });
   expect(container.textContent).not.toContain("Voice-hotkey fejlede");
 });

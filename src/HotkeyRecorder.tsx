@@ -61,26 +61,57 @@ function buildAccel(
   return out.join("+");
 }
 
+/// Den optager der lytter LIGE NU, hvis nogen.
+///
+/// Modul-scoped fordi der er flere optagere paa siden (hver genvej har en
+/// primaer og en alternativ binding), og de deler to globale ting: Rust-siden
+/// `suspend_wake_hotkey`, og capture-fase-lytterne paa `window`. Startede man
+/// nummer to mens den foerste lyttede, ville den foerstes
+/// `stopImmediatePropagation` sluge tastetrykket, og nummer to haenge paa
+/// "Tryk kombinationen nu…" for evigt.
+///
+/// At starte en ny optager afbryder derfor den forrige — det er ogsaa den
+/// forventede adfaerd for brugeren.
+let activeRecorderStop: (() => void) | null = null;
+
 export function HotkeyRecorder({
   value,
   onChange,
   onReset,
+  resetLabel = "Nulstil",
+  emptyLabel = "Ingen",
   disabled,
 }: {
+  /** Tom streng = ingen binding sat (kun meningsfuldt for alternative). */
   value: string;
   onChange: (accel: string) => Promise<void>;
   /** "Nulstil" tegnes kun naar den er givet — se handlingslinjen nedenfor. */
   onReset?: () => void;
+  /** Teksten paa `onReset`-knappen. Den alternative binding RYDDER frem for
+   *  at nulstille: der findes ingen default at falde tilbage til. */
+  resetLabel?: string;
+  /** Hvad tastekappen viser naar der ingen binding er. Uden den ville
+   *  `hotkeyLabelParts("")` give en tom liste og efterlade en tom, klikbar
+   *  kasse uden nogen antydning af hvad den goer. */
+  emptyLabel?: string;
   disabled?: boolean;
 }) {
   const [listening, setListening] = useState(false);
-  const [parts, setParts] = useState<string[]>(() => value.split("+"));
+  const [parts, setParts] = useState<string[]>(() =>
+    value.trim() === "" ? [] : value.split("+"),
+  );
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const suspendedRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
+    if (value.trim() === "") {
+      setParts([]);
+      return () => {
+        alive = false;
+      };
+    }
     void hotkeyLabelParts(value).then((next) => {
       if (alive) setParts(next);
     });
@@ -109,7 +140,10 @@ export function HotkeyRecorder({
   const stop = useCallback(() => {
     setListening(false);
     void setSuspended(false);
+    if (activeRecorderStop === stopRef.current) activeRecorderStop = null;
   }, [setSuspended]);
+  const stopRef = useRef<() => void>(stop);
+  stopRef.current = stop;
 
   const commit = useCallback(
     async (accel: string) => {
@@ -223,6 +257,11 @@ export function HotkeyRecorder({
   const begin = () => {
     setError(null);
     setNote(null);
+    // Afbryd en anden optager foerst — se `activeRecorderStop`.
+    if (activeRecorderStop !== null && activeRecorderStop !== stopRef.current) {
+      activeRecorderStop();
+    }
+    activeRecorderStop = stopRef.current;
     void setSuspended(true).then(() => setListening(true));
   };
 
@@ -259,11 +298,15 @@ export function HotkeyRecorder({
           </span>
         ) : (
           <span data-hotkey-value style={styles.caps}>
-            {parts.map((part, index) => (
-              <span key={`${part}-${index}`} style={styles.cap}>
-                {part}
-              </span>
-            ))}
+            {parts.length === 0 ? (
+              <span style={{ ...styles.cap, opacity: 0.55 }}>{emptyLabel}</span>
+            ) : (
+              parts.map((part, index) => (
+                <span key={`${part}-${index}`} style={styles.cap}>
+                  {part}
+                </span>
+              ))
+            )}
           </span>
         )}
       </button>
@@ -280,7 +323,7 @@ export function HotkeyRecorder({
               disabled={disabled || listening}
               style={styles.linkButton}
             >
-              Nulstil
+              {resetLabel}
             </button>
           </>
         )}
