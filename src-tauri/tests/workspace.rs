@@ -1217,10 +1217,9 @@ fn settings_input_rejects_a_missing_field() {
 /// og denne test er det eneste sted det falder.
 #[test]
 fn gammel_settings_json_uden_keywords_faar_standardlisten() {
-    let legacy: Settings = serde_json::from_str(
-        r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","wallpaper":"blue-folds"}"#,
-    )
-    .expect("legacy settings skal parse");
+    let legacy: Settings =
+        serde_json::from_str(r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","wallpaper":"blue-folds"}"#)
+            .expect("legacy settings skal parse");
     assert_eq!(
         legacy.stt_keywords,
         Settings::default().stt_keywords,
@@ -1240,7 +1239,10 @@ fn gammel_settings_json_uden_keywords_faar_standardlisten() {
 fn en_bevidst_tom_keyword_liste_overlever() {
     let ryddet: Settings =
         serde_json::from_str(r#"{"stt_keywords":[]}"#).expect("tom liste skal parse");
-    assert!(ryddet.stt_keywords.is_empty(), "tom liste skal parse som tom");
+    assert!(
+        ryddet.stt_keywords.is_empty(),
+        "tom liste skal parse som tom"
+    );
 
     let efter = talminal_canvas_lib::workspace::normalize_settings(ryddet);
     assert!(
