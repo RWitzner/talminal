@@ -156,15 +156,37 @@ pipelinens tilstand, som er `speaking` længe efter tasten er sluppet — og gat
 `App.tsx`.
 
 **Ruterne bor ét sted — men navnene gør ikke.** `providers.rs` er den eneste kilde til
-endpoints og modelnavne: `STT_ROUTES` (2 ruter — samme udbyder og samme realtime-session,
-kun modellen skifter) og `ROUTER_ROUTES` (4 ruter). De når fladen over wiren
-(`resolve_voice_routes`, `workspace.rs:65` → `voice_routes`, `types.ts:118`), så dér er der
-ingen kopi at holde synkron. Undtagelsen er **navnene**: de fire `KEY_SLOT_*`
-(`providers.rs:76-79`) står ordret igen i `src/Settings.tsx:40-43`, og slugs står igen i
-`STT_CHOICES` og `ROUTING_CHOICES` (`Settings.tsx:610` og `:620`). Tilføjer du en udbyder
-eller en model, skal begge sider røres.
+endpoints og modelnavne: `STT_ROUTES` (1 rute, `gpt-transcribe`) og `ROUTER_ROUTES`
+(4 ruter). De når fladen over wiren (`resolve_voice_routes`, `workspace.rs:65` →
+`voice_routes`, `types.ts:137`), så dér er der ingen kopi at holde synkron. Undtagelsen er
+**navnene**: de fire `KEY_SLOT_*` (`providers.rs:107-110`) står ordret igen i
+`src/Settings.tsx:40-43`, og router-slugs står igen i `ROUTING_CHOICES`
+(`Settings.tsx:665`). Tilføjer du en udbyder eller en model, skal begge sider røres.
 
-Drift ER sket her før: `types.ts:113` manglede `"reasoning_off"` i `decoration`-unionen fra
+STT-siden har ingen sådan spejling længere: `STT_CHOICES` er væk sammen med modelvalget
+(2026-08-05), og med én rute er der intet at vælge og derfor ingen liste at drifte fra.
+Kommer der en rute mere, er det UI'et der skal tilbage — `stt_provider` i `Settings` og
+opslaget i `resolve_voice_routes` har stået der hele tiden.
+
+**Keywords er en brugerindstilling, ikke en rute-egenskab.** `stt_keywords` bor i
+`Settings` og når `stt.ts` gennem `App.tsx`' `sttKeywordsRef` — ikke gennem `voice_routes`.
+Ruten bestemmer kun *om* de må sendes (`supports_keywords`), og den gate er ikke kosmetisk:
+de to 4o-modeller svarede **400 `Invalid request.`** på feltet, altså ikke "ignoreret" men
+afvist. En rute uden understøttelse ville brække hver ytring, ikke bare miste et hint.
+
+Feltet har bevidst **intet** `#[serde(default)]` — `Settings` har attributten på
+struct-niveau, og en felt-attribut ville vinde over den og resolve til `Vec::default()` =
+tom, så hver eksisterende bruger tavst mistede standardlisten. Og `normalize_settings`
+lader med vilje en **tom** liste overleve, hvor `normalized_slug` ellers altid falder
+tilbage til defaulten: en ryddet liste er et valg.
+
+**`SttRoute` bærer sin egen parameter-dialekt** (`language_field`). Det er ikke pynt:
+`gpt-transcribe` tager sproghintet som `languages: ["da"]`, mens 4o-generationen tog
+`language: "da"`, og fejlen er TAVS i opgraderingsretningen — den nye model svarer 200 på
+det gamle felt og ignorerer det. Målt 2026-08-05. Derfor er feltet påkrævet hele vejen ned
+til `createOpenAiSttClient`, så `tsc` fælder ethvert kaldested der ikke har taget stilling.
+
+Drift ER sket her før: `types.ts` manglede `"reasoning_off"` i `decoration`-unionen fra
 GPT-5.6-ruten blev skrevet ind, til det blev fanget 2026-08-04. Ingen test vogter
 spejlingen — kun læsning.
 

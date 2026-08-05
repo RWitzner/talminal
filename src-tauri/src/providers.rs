@@ -22,10 +22,11 @@ use serde::Serialize;
 // ud som om det var i brug. Skal en ikke-streamende STT-udbyder tilføjes
 // senere, skrives transporten forfra — mod dén udbyders faktiske API.
 //
-// `openai-mini` (2026-08-04) genåbner IKKE det spørgsmål. Den er ikke en ny
-// transport, men samme realtime-session med en mindre model: samme deltas,
-// samme prompt-felt, samme nøgle. Begrundelsen for at slette OpenRouter var
-// transportens — ikke modellens størrelse — og den gælder derfor ikke her.
+// `openai-mini` (2026-08-04) genåbnede ikke det spørgsmål, og den er nu væk
+// igen (2026-08-05): `gpt-transcribe` slog begge 4o-modeller på dansk og er
+// billigere end den der var default, så et modelvalg havde intet at vælge
+// imellem. Transporten er uændret gennem hele forløbet — det er stadig den
+// samme realtime-session, og OpenRouter-beslutningen ovenfor står ved magt.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,6 +43,33 @@ pub enum Decoration {
     ReasoningOff,
 }
 
+/// Hvilket felt modellen tager sit sproghint i.
+///
+/// Dette er IKKE en stilistisk detalje. OpenAIs nyere transskriberings-
+/// modeller omdoebte feltet fra `language` (streng) til `languages` (array),
+/// og deres egen guide siger ordret "Don't send both". Endpointet er det
+/// SAMME for begge generationer, saa dialekten kan ikke udledes af ruten paa
+/// anden vis end ved at staa skrevet.
+///
+/// Fejlen er tavs i praecis den retning man bevaeger sig. Maalt 2026-08-05 mod
+/// `/v1/audio/transcriptions`:
+///
+///   gpt-transcribe    + `language`  => 200, feltet ignoreres i stilhed
+///   gpt-4o-transcribe + `languages` => 400 "not supported for this model"
+///
+/// Opgraderer man modellen og glemmer feltet, faar man altsaa et transskript,
+/// ingen fejl, og et sproghint der aldrig blev laest. Derfor er dette et felt
+/// paa ruten og ikke en konstant i `stt.ts`: naeste rute kan ikke undgaa at
+/// tage stilling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageField {
+    /// `language: "da"` — whisper-1, gpt-4o-transcribe, gpt-4o-mini-transcribe.
+    Singular,
+    /// `languages: ["da"]` — gpt-transcribe, gpt-live-transcribe.
+    Plural,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct SttRoute {
     pub slug: &'static str,
@@ -51,15 +79,22 @@ pub struct SttRoute {
     /// Falsk => HUD'en faar ingen loebende tekst, og turen skal ryddes
     /// eksplicit ved start (spec §4).
     ///
-    /// Er sand for BEGGE ruter i dag — de deler transport, og det er
-    /// transporten der leverer deltas. Feltet bliver staaende, fordi det
-    /// beskriver RUTEN og styrer rigtig adfaerd i pipelinen — modsat
-    /// `transport`, hvis eneste opgave var at vaelge en kodesti der nu er
-    /// slettet.
+    /// Sand for ruten i dag, og for foerste gang paa grundlag af en MAALING:
+    /// den raa realtime-log 2026-08-05 viser
+    /// `conversation.item.input_audio_transcription.delta` foer `.completed`.
+    /// Tidligere var flaget en stillingtagen — se `bbf0e09`, hvis advarsel om
+    /// netop det derfor ikke laengere gaelder denne rute.
     pub supports_partials: bool,
     /// Falsk => STT_DOMAIN_PROMPT ignoreres af udbyderen; dansk-genkendelsen
     /// paa kort-numre bliver maalbart ringere. Skal maerkes i UI'et.
     pub supports_domain_prompt: bool,
+    /// Dialekten for sproghintet. Se `LanguageField`.
+    pub language_field: LanguageField,
+    /// Falsk => brugerens keyword-liste maa IKKE sendes. De to 4o-modeller
+    /// svarede **400 `Invalid request.`** paa feltet (maalt 2026-08-05), altsaa
+    /// ikke "ignoreret" men afvist: en rute uden understoettelse ville braekke
+    /// hver eneste ytring, ikke bare miste et hint.
+    pub supports_keywords: bool,
     pub key_slot: &'static str,
 }
 
@@ -82,39 +117,34 @@ pub const KEY_SLOT_OPENROUTER: &str = "provider_key_openrouter";
 pub const DEFAULT_STT_SLUG: &str = "openai";
 pub const DEFAULT_ROUTER_SLUG: &str = "vercel";
 
-/// To ruter, én udbyder: valget er MODELLEN, ikke leverandøren. De deler
-/// endpoint, nøgleslot og begge kapabilitets-flag, fordi de er den samme
-/// realtime-session — kun vægtklassen er forskellig.
+/// ÉN rute. Modelvalget fra 2026-08-04 (`bbf0e09`) er rullet tilbage, ikke
+/// fordi valget var forkert at tilbyde, men fordi maalingen gjorde det
+/// overfloedigt: `gpt-transcribe` er paa dansk markant bedre end BEGGE de to
+/// 4o-modeller og samtidig billigere end den der var default
+/// ($0,0045/min mod $0,006 og $0,003). Naar én rute vinder paa baade pris og
+/// praecision, er et valg mellem dem kun en maade at lade brugeren vaelge
+/// forkert paa.
 ///
-/// Rækkefølgen er UI'ets: `Settings.tsx` tegner valgene i tabellens orden, og
-/// den store model står først fordi den er defaulten.
-pub const STT_ROUTES: &[SttRoute] = &[
-    SttRoute {
-        slug: "openai",
-        label: "OpenAI",
-        endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
-        model: "gpt-4o-transcribe",
-        supports_partials: true,
-        supports_domain_prompt: true,
-        key_slot: KEY_SLOT_OPENAI,
-    },
-    // Hurtigere og ca. halv pris. Flagene er sat til true, fordi mini kører i
-    // SAMME transcription-session: den får `prompt` og `delta`-events af
-    // transporten, ikke af modellen. Det er en stillingtagen (kravet i
-    // `stt_routes_cover_the_supported_slugs`), ikke en måling — mini er
-    // ALDRIG kørt gennem voice-eval på dansk. Bliver `prompt` tavst ignoreret
-    // af den mindre model, er symptomet ringere genkendelse af kort-numre, og
-    // hverken proben eller nogen test her ville fange det.
-    SttRoute {
-        slug: "openai-mini",
-        label: "OpenAI mini",
-        endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
-        model: "gpt-4o-mini-transcribe",
-        supports_partials: true,
-        supports_domain_prompt: true,
-        key_slot: KEY_SLOT_OPENAI,
-    },
-];
+/// Tabellen er stadig en LISTE og ikke en konstant. Det er ikke spekulativ
+/// generalitet: den har vaeret én rute foer (frem til 2026-08-04) og er blevet
+/// til to og tilbage igen, og `resolve_voice_routes` slaar fortsat op paa slug.
+///
+/// Slug'en `openai` er GENBRUGT frem for at faa et nyt navn. Det goer
+/// migreringen gratis: en gemt `openai` peger nu paa den nye model, og en gemt
+/// `openai-mini` findes ikke laengere, saa `normalize_settings` bringer den
+/// her. Prisen er at aendringen er tavs i brugerens `settings.json` — filen ser
+/// uaendret ud mens modellen bag er en anden.
+pub const STT_ROUTES: &[SttRoute] = &[SttRoute {
+    slug: "openai",
+    label: "OpenAI",
+    endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
+    model: "gpt-transcribe",
+    supports_partials: true,
+    supports_domain_prompt: true,
+    language_field: LanguageField::Plural,
+    supports_keywords: true,
+    key_slot: KEY_SLOT_OPENAI,
+}];
 
 pub const ROUTER_ROUTES: &[RouterRoute] = &[
     RouterRoute {
@@ -205,32 +235,42 @@ mod tests {
     #[test]
     fn stt_routes_cover_the_supported_slugs() {
         let slugs: Vec<&str> = STT_ROUTES.iter().map(|r| r.slug).collect();
-        assert_eq!(slugs, vec!["openai", "openai-mini"]);
+        assert_eq!(slugs, vec!["openai"]);
         assert!(stt_route("openrouter").is_none());
+        // De to 4o-modeller er VAEK, ikke omdoebt. Kommer en af slug'erne
+        // tilbage, skal det vaere en bevidst handling og ikke en genopstaaen.
+        assert!(stt_route("openai-mini").is_none());
     }
 
-    /// Mini findes for at kunne vaelge fart og pris frem for praecision.
-    /// Alt ANDET end modellen skal vaere identisk med den store rute: driver
-    /// endpoint eller flagene fra hinanden, er det en fejl — ikke en tuning-
-    /// knap. (At flagene ER sande for mini er en stillingtagen, se tabellen.)
+    /// Afloeser `mini_differs_from_the_default_route_only_by_model`, som forsvandt
+    /// med mini-ruten 2026-08-05.
+    ///
+    /// Den test var den ENESTE der haandhaevede at rutens kapabilitets-flag var
+    /// taget stilling til — `stt_routes_cover_the_supported_slugs` ovenfor
+    /// asserterer trods sin doc-kommentar kun paa slug-listen. Uden en
+    /// afloeser ville nedlaeggelsen af den anden rute altsaa have SAENKET
+    /// daekningen, hvilket er den slags tab man ikke opdager fordi ingen test
+    /// bliver roed af det.
+    ///
+    /// Assertionerne er positive og ikke sammenlignende: med kun én rute er der
+    /// intet at spejle imod, saa hvert felt maa staa ved navn.
     #[test]
-    fn mini_differs_from_the_default_route_only_by_model() {
-        let full = stt_route(DEFAULT_STT_SLUG).expect("default stt route");
-        let mini = stt_route("openai-mini").expect("mini stt route");
-        assert_eq!(mini.model, "gpt-4o-mini-transcribe");
-        assert_ne!(mini.model, full.model);
-        assert_eq!(mini.endpoint, full.endpoint);
-        assert_eq!(mini.key_slot, full.key_slot);
-        // Baade "ens" OG "sande": et rent lighedstjek ville ogsaa bestaa hvis
-        // begge ruter mistede flagene, og saa var stemmen stum for alle.
-        assert_eq!(mini.supports_partials, full.supports_partials);
-        assert_eq!(mini.supports_domain_prompt, full.supports_domain_prompt);
-        assert!(mini.supports_partials);
-        assert!(mini.supports_domain_prompt);
+    fn the_only_stt_route_states_its_capabilities() {
+        let route = stt_route(DEFAULT_STT_SLUG).expect("default stt route");
+        assert_eq!(route.model, "gpt-transcribe");
+        // MAALT 2026-08-05 paa den raa realtime-log, ikke raesonneret frem.
+        assert!(route.supports_partials);
+        assert!(route.supports_domain_prompt);
+        // gpt-transcribe tager `languages` (array). Sendes `language` i stedet,
+        // svarer API'et 200 og ignorerer hintet i stilhed — se `LanguageField`.
+        assert_eq!(route.language_field, LanguageField::Plural);
+        // Maalt: de to 4o-modeller AFVISER feltet med 400, saa flaget er en
+        // gate mod at braekke hver ytring — ikke mod at miste et hint.
+        assert!(route.supports_keywords);
     }
 
-    /// Begge STT-ruter er OpenAI og deler noeglen — ellers kunne man vaelge en
-    /// rute, hvis noegle der ikke findes et felt til i UI'et.
+    /// STT-ruten er OpenAI og deler noeglen med OpenAI-routeren — ellers kunne
+    /// man vaelge en rute, hvis noegle der ikke findes et felt til i UI'et.
     ///
     /// Bemaerk hvad testen IKKE beviser: `secrets::stt_api_key_from` slaar
     /// HAARDKODET op i KEY_SLOT_OPENAI og laeser aldrig `route.key_slot`.
@@ -239,7 +279,7 @@ mod tests {
     /// `stt_api_key_from` roeres FOERST — ellers henter stemmen den forkerte
     /// noegle, og hverken denne test eller nogen anden falder over det.
     #[test]
-    fn both_stt_routes_use_the_openai_key_slot() {
+    fn stt_routes_use_the_openai_key_slot() {
         for route in STT_ROUTES {
             assert_eq!(route.key_slot, KEY_SLOT_OPENAI, "stt-rute {}", route.slug);
         }
@@ -276,13 +316,14 @@ mod tests {
     #[test]
     fn defaults_resolve_to_todays_behaviour() {
         let stt = stt_route(DEFAULT_STT_SLUG).expect("default stt route");
-        assert_eq!(stt.model, "gpt-4o-transcribe");
+        assert_eq!(stt.model, "gpt-transcribe");
         assert_eq!(
             stt.endpoint,
             "wss://api.openai.com/v1/realtime?intent=transcription"
         );
         assert!(stt.supports_partials);
         assert!(stt.supports_domain_prompt);
+        assert_eq!(stt.language_field, LanguageField::Plural);
         assert_eq!(stt.key_slot, "provider_key_openai");
 
         let router = router_route(DEFAULT_ROUTER_SLUG).expect("default router route");

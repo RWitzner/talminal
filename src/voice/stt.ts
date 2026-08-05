@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { bytesToBase64 } from "../base64";
+import type { LanguageField } from "../types";
 
 export interface SttClient {
   start(): Promise<void>;
@@ -25,11 +26,34 @@ function errorMessage(payload: unknown): string {
   return "OpenAI realtime transcription failed";
 }
 
+/** Sproget er det samme uanset model — kun FELTNAVNET varierer. */
+const STT_LANGUAGE = "da";
+
+/**
+ * Byg sproghintet i den dialekt modellen forstaar.
+ *
+ * `languageField` er PAAKRAEVET og har med vilje ingen default. Et forkert
+ * felt giver 200 og et tavst ignoreret hint (maalt — se `LanguageField` i
+ * `providers.rs`), saa der findes intet sikkert gaet at falde tilbage paa.
+ * Er feltet paakraevet, faelder tsc i stedet ethvert kaldested der ikke har
+ * taget stilling — og det er den eneste vagt der virker mod en tavs fejl.
+ */
+function languageHint(field: LanguageField): Record<string, unknown> {
+  return field === "plural"
+    ? { languages: [STT_LANGUAGE] }
+    : { language: STT_LANGUAGE };
+}
+
 /** OpenAI GA realtime transcription over a browser-compatible WebSocket. */
 export function createOpenAiSttClient(
   options: {
     model: string;
     endpoint: string;
+    languageField: LanguageField;
+    /** Brugerens egne termer. Udelades naar ruten ikke kan tage dem — de to
+     *  4o-modeller AFVISER feltet med 400, saa det er ikke gratis at sende
+     *  det "for en sikkerheds skyld". Tom liste => feltet sendes ikke. */
+    keywords?: readonly string[];
     prompt?: string | null;
     mintSecret?: () => Promise<{ value: string; expires_at: number }>;
     createSocket?: (url: string, protocols: string[]) => WebSocket;
@@ -124,7 +148,10 @@ export function createOpenAiSttClient(
                       format: { type: "audio/pcm", rate: 24_000 },
                       transcription: {
                         model: options.model,
-                        language: "da",
+                        ...languageHint(options.languageField),
+                        ...(options.keywords && options.keywords.length > 0
+                          ? { keywords: [...options.keywords] }
+                          : {}),
                         ...(options.prompt === null
                           ? {}
                           : { prompt: options.prompt ?? STT_DOMAIN_PROMPT }),

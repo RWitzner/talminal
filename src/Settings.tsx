@@ -91,6 +91,16 @@ async function saveSettingsPatch(
       // igennem til current.
       dictation_submit:
         patch.dictation_submit ?? current.dictation_submit ?? false,
+      // `?? []` er IKKE en TS-kopi af standardlisten, og skal ikke blive det.
+      // Rusts `Settings` serialiseres altid helt (ingen skip_serializing_if),
+      // saa `current.stt_keywords` er udfyldt paa wiren — med standardlisten
+      // for en bruger der aldrig har roert feltet. Fallbacken her rammer kun
+      // hvis snapshottet slet ikke havde feltet, hvilket i praksis kun sker i
+      // testfixtures. Havde vi skrevet standardlisten her i stedet, ville den
+      // findes i to sprog og kunne drifte fra Rusts.
+      //
+      // En TOM liste skal overleve: brugeren kan have ryddet den med vilje.
+      stt_keywords: patch.stt_keywords ?? current.stt_keywords ?? [],
     },
   });
 }
@@ -118,18 +128,39 @@ const SECRET_SLOTS = [
     // Det ENESTE slot der kan bære begge roller: vælges OpenAI som router
     // også, er hele stemme-vejen dækket af denne ene nøgle.
     help: "Stemme-genkendelsen — og routeren, hvis du vælger OpenAI som udbyder.",
+    // Testknappen bor her siden 2026-08-05. Den lå i stemme-sektionen, indtil
+    // den sektion blev nedlagt sammen med modelvalget — og uden et nyt hjem
+    // ville den forsvinde. Det ville have været en regression truffet ved et
+    // uheld: proben er det eneste sted man kan få at vide om nøglen og ruten
+    // virker, FØR man står med en stum mikrofon.
+    //
+    // Nøglerækken er et bedre sted end det gamle: det er her man er, når man
+    // lige har indsat en nøgle og vil vide om den duer.
+    //
+    // FRISKT snapshot pr. klik — ikke det der var indlæst da siden blev åbnet.
+    probe: async () => {
+      const workspace = await invoke<WorkspaceResponse>("get_workspace");
+      // Keywords med: proben skal teste PRAECIS den konfiguration brugeren
+      // taler paa. Uden dem svarer knappen groent paa noget andet.
+      return probeSttRoute(
+        workspace.voice_routes,
+        workspace.settings?.stt_keywords ?? [],
+      );
+    },
   },
   {
     key: PROVIDER_KEY_VERCEL,
     label: "Vercel AI Gateway",
     placeholder: "vck_…",
     help: "Routeren, når udbyderen er Vercel AI Gateway.",
+    probe: null,
   },
   {
     key: PROVIDER_KEY_GOOGLE,
     label: "Google",
     placeholder: "AIza…",
     help: "Routeren, når udbyderen er Google direkte.",
+    probe: null,
   },
   {
     key: PROVIDER_KEY_OPENROUTER,
@@ -138,6 +169,7 @@ const SECRET_SLOTS = [
     // Var "begge roller" indtil 2026-07-29, hvor OpenRouter-STT-ruten blev
     // slettet. Nøglen lever videre — som router-udbyder alene.
     help: "Routeren, når udbyderen er OpenRouter.",
+    probe: null,
   },
 ] as const;
 
@@ -201,6 +233,11 @@ function SecretRow({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Probe-tilstanden er ADSKILT fra `busy`/`error`: et fejlet stemme-tjek maa
+  // ikke ligne en fejlet noeglegemning, og omvendt.
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<string | null>(null);
+  const [probeError, setProbeError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -242,6 +279,19 @@ function SecretRow({
       setDraft("");
     });
   const clear = () => run(() => invoke("delete_secret", { key: slot.key }));
+
+  const runProbe = async () => {
+    if (slot.probe === null || probing) return;
+    setProbing(true);
+    setProbeResult(null);
+    setProbeError(null);
+    try {
+      setProbeResult(await slot.probe());
+    } catch (reason) {
+      setProbeError(String(reason));
+    }
+    setProbing(false);
+  };
 
   const status = present === null ? "ukendt" : present ? "sat" : "ikke sat";
 
@@ -296,7 +346,25 @@ function SecretRow({
         >
           Fjern
         </button>
+        {slot.probe !== null && (
+          <button
+            style={styles.linkButton}
+            data-secret-probe
+            onClick={() => void runProbe()}
+            // Spaerret uden noegle: proben ville fejle med en autentifikations-
+            // fejl, og den fejl siger intet andet end det raekken allerede
+            // viser med "ikke sat".
+            disabled={busy || probing || present !== true}
+            title="Send en kort testlyd gennem stemme-genkendelsen og vis hvad der kom tilbage"
+          >
+            {probing ? "Tester…" : "Test stemmen"}
+          </button>
+        )}
       </div>
+      {probeResult !== null && (
+        <div style={styles.hint}>Genkendt: «{probeResult}»</div>
+      )}
+      {probeError !== null && <div style={styles.error}>{probeError}</div>}
       {error !== null && <div style={styles.error}>{error}</div>}
     </div>
   );
@@ -577,6 +645,116 @@ function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> })
   );
 }
 
+/** Komma ELLER linjeskift som separator — brugeren skal ikke gætte hvilken. */
+function parseKeywords(raw: string): string[] {
+  return raw
+    .split(/[,\n]/u)
+    .map((word) => word.trim())
+    .filter((word) => word.length > 0);
+}
+
+/**
+ * Brugerens egne ord til STT'ens `keywords`-felt.
+ *
+ * Sektionen findes fordi hint-feltet virker, men kun paa termer nogen har
+ * skrevet ind: `TalminalMCP` blev hoert som "Terminal" indtil ordet stod paa
+ * listen (maalt 2026-08-05).
+ *
+ * Advarslen om mellemrum er ikke pedanteri. Samme maaling viste at
+ * `"Talminal MCP"` med mellemrum blev IGNORERET, mens `TalminalMCP` ramte med
+ * det samme — en flerords-frase forplanter sig ikke til ordene i den. Og det
+ * fejler ikke: API'et accepterer frasen, den virker bare daarligere. Derfor
+ * skal UI'et sige det, og derfor SPAERRER det ikke — brugeren kan have en
+ * grund, og et hint der virker svagt er bedre end et felt der naegter at gemme.
+ */
+export function KeywordsSection({
+  onSaved,
+}: {
+  onSaved?: () => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    invoke<WorkspaceResponse>("get_workspace")
+      .then((ws) => {
+        if (!alive || ws.settings == null) return;
+        setDraft((ws.settings.stt_keywords ?? []).join(", "));
+        setLoaded(true);
+      })
+      .catch((err) => {
+        if (alive) setError(String(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const words = parseKeywords(draft);
+  const flerords = words.filter((word) => word.includes(" "));
+
+  const save = async () => {
+    // `loaded` spaerrer den foerste blur foer snapshottet er hentet: uden den
+    // ville et fokusskift paa en langsom maskine gemme en TOM liste over
+    // brugerens rigtige.
+    if (busy || !loaded) return;
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await saveSettingsPatch({ stt_keywords: words });
+      await onSaved?.();
+      setSaved(true);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={styles.row}>
+      <div style={styles.rowHeader}>
+        <span style={styles.label}>Ord der er svære at høre</span>
+        {saved && <span style={{ ...styles.badge, ...styles.badgeSet }}>gemt</span>}
+      </div>
+      <div style={styles.rowLead}>
+        Termer du ofte siger, og som bliver hørt forkert — produktnavne,
+        agent-navne, forkortelser. Adskil med komma eller linjeskift.
+      </div>
+      <textarea
+        style={{ ...styles.input, minHeight: 72, fontFamily: "inherit" }}
+        data-stt-keywords
+        aria-label="Keywords til stemme-genkendelsen"
+        value={draft}
+        disabled={busy || !loaded}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setSaved(false);
+        }}
+        onBlur={() => void save()}
+      />
+      <div style={styles.hint}>
+        {words.length} {words.length === 1 ? "ord" : "ord"} · gemmes når du
+        klikker ud af feltet
+      </div>
+      {flerords.length > 0 && (
+        <div style={styles.hint}>
+          <strong>{flerords.join(", ")}</strong> indeholder mellemrum. Et hint
+          virker bedst som ét sammenhængende ord — «TalminalMCP» ramte, hvor
+          «Talminal MCP» blev overhørt. Skriv dem hver for sig, eller uden
+          mellemrum. Teksten bliver stadig skrevet normalt.
+        </div>
+      )}
+      {error !== null && <div style={styles.error}>{error}</div>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Wallpaper-sektion: hvert klik persisterer straks og App re-henter derefter
 // workspace-snapshot'et, så canvas-baggrunden skifter uden genstart.
@@ -678,22 +856,14 @@ function WallpaperSection({
   );
 }
 
-// Begge valg er OpenAI, saa labels er MODELNAVNE og ikke udbydernavne — det er
-// modellen der er forskellen. (Routing-sektionen har udbydernavne, fordi dét
-// valg peger paa forskellige leverandoerer.)
+// STT_CHOICES er væk (2026-08-05). Der er kun én STT-rute igen, og et
+// radiovalg med ét element er ikke et valg — det er støj der ser ud som en
+// indstilling. Se `providers.rs`' STT_ROUTES for hvorfor modelvalget fra
+// 2026-08-04 blev rullet tilbage: `gpt-transcribe` vandt på BÅDE pris og
+// dansk præcision, så der var intet at vælge imellem.
 //
-// Advarslen paa mini siger hvad vi VED (mindre model, hurtigere, billigere) og
-// hvad vi ikke ved. Der staar med vilje ingen procent: mini er aldrig koert
-// gennem voice-eval paa dansk.
-const STT_CHOICES = [
-  { slug: "openai", label: "gpt-4o-transcribe", warning: null },
-  {
-    slug: "openai-mini",
-    label: "gpt-4o-mini-transcribe",
-    warning:
-      "Mindre model — hurtigere og ca. halv pris. Ikke målt på dansk; forvent flere fejlhøringer på kort-numre.",
-  },
-] as const;
+// Testknappen fra den nedlagte sektion er flyttet til OpenAI-nøglerækken
+// (SECRET_SLOTS ovenfor), ikke slettet.
 
 const ROUTING_CHOICES = [
   { slug: "vercel", label: "Vercel AI Gateway", warning: null },
@@ -863,45 +1033,13 @@ export function ProviderSection({
   );
 }
 
-/**
- * Stemme-genkendelsen er et valg igen — men et ANDET valg end foer.
- *
- * Indtil 2026-07-29 valgte man UDBYDER (OpenAI eller OpenRouter). Da
- * OpenRouter-ruten blev slettet, stod sektionen tilbage som ren visning: et
- * radiovalg med én mulighed er ikke et valg. Fra 2026-08-04 vaelger man MODEL
- * inden for samme udbyder — samme realtime-session, samme noegle, samme
- * domaene-ordliste, kun vaegtklassen skifter. Derfor baerer valgene her ingen
- * advarsel om manglende kapabiliteter, som OpenRouter-valget gjorde: de to
- * ruter kan det samme, og forskellen er praecision mod fart og pris.
- *
- * Testknappen bliver staaende — den er det eneste sted man kan faa at vide om
- * noeglen og ruten virker, foer man staar med en stum mikrofon. Bemaerk hvad
- * den IKKE kan: bliver `prompt` tavst ignoreret af den mindre model, svarer
- * proben stadig paent, og det viser sig foerst som ringere genkendelse af
- * kort-numre i brug.
- */
-export function VoiceProviderSection({
-  onSaved,
-}: {
-  onSaved?: () => void | Promise<void>;
-}) {
-  return (
-    <ProviderSection
-      title="Stemme-genkendelse"
-      lead="Via OpenAI. Kræver OpenAI-nøglen under Nøgler."
-      choices={STT_CHOICES}
-      settingsKey="stt_provider"
-      currentModelOf={(routes) => routes.stt.model}
-      // FRISKT snapshot pr. klik: proben skal teste den rute man lige har
-      // valgt — ikke den der var valgt da sektionen blev monteret.
-      probe={async () => {
-        const workspace = await invoke<WorkspaceResponse>("get_workspace");
-        return probeSttRoute(workspace.voice_routes);
-      }}
-      onSaved={onSaved}
-    />
-  );
-}
+// `VoiceProviderSection` er nedlagt 2026-08-05 sammen med modelvalget.
+//
+// Sektionen har haft tre liv: udbyder-valg (til 2026-07-29), ren visning, og
+// model-valg (fra 2026-08-04). Den er væk igen, fordi målingen gjorde valget
+// overflødigt — ikke fordi valget var forkert at tilbyde. `ProviderSection`
+// nedenfor bliver stående; routing-valget bruger den, og kommer der en STT-rute
+// mere, er det UI'et der skal tilbage, ikke `stt_provider`-feltet i Rust.
 
 /**
  * Mikrofon-tjek med en vej ud, når svaret er nej.
@@ -1029,14 +1167,17 @@ export function ResetProvidersButton({
       <button style={styles.button} onClick={() => void reset()} disabled={busy}>
         Nulstil til anbefalet
       </button>
-      {/* Knappen bor under Routing, men roerer BEGGE roller — og
-          stemme-genkendelsen er en anden kategori, saa den aendring sker uden
-          for skaermen. Derfor staar det skrevet. */}
+      {/* Teksten lovede indtil 2026-08-05 "baade stemme-genkendelsen og
+          routingen". Stemme-halvdelen er ikke laengere et loefte der betyder
+          noget: der er kun én STT-rute, saa `stt_provider: "openai"` ovenfor
+          kan hoejst rette en nedlagt slug som `normalize_settings` alligevel
+          fanger ved indlaesning. Patchen bliver staaende (den er billig og gor
+          knappen robust mod en gammel fil), men teksten lover kun det den
+          faktisk aendrer for brugeren. */}
       {/* Uden modelnavne i teksten: `providers.rs` er den eneste kilde til
           dem, og en streng her ville vaere endnu en kopi at holde synkron. */}
       <div style={styles.hint}>
-        Sætter både stemme-genkendelsen og routingen tilbage til de anbefalede
-        ruter.
+        Sætter routingen tilbage til den anbefalede rute.
       </div>
       {error !== null && <div style={styles.error}>{error}</div>}
     </div>
@@ -1169,10 +1310,10 @@ export function Settings({
           <HotkeySection onSaved={onSaved} />
           <DictationSection onSaved={onSaved} />
           <MicrophoneSection />
-          {/* onSaved er ikke kosmetik: den forer valget videre til App.tsx'
-              refresh, som opdaterer `voiceRoutesRef` — uden den taler den
-              KOERENDE session videre til den gamle model. */}
-          <VoiceProviderSection onSaved={onSaved} />
+          {/* onSaved er ikke kosmetik: den fører listen videre til App.tsx'
+              refresh, som opdaterer `sttKeywordsRef` — uden den taler den
+              KØRENDE session videre uden de nye ord. */}
+          <KeywordsSection onSaved={onSaved} />
         </>
       )}
 

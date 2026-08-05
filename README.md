@@ -236,8 +236,8 @@ kun stemmevejen der beder om noget.
 
 Talminal har ingen konto og ingen server. Du indtaster dine egne nøgler under
 **Indstillinger → Nøgler**, og de gemmes i Windows Credential Manager — ikke i en fil.
-Selve rute-valget er delt i to: transskriptions-modellen står under **Stemme**,
-router-ruten under **Model & routing**.
+Router-ruten vælger du under **Model & routing**. Transskriptions-modellen er
+der intet valg om — der er én, og den står i `providers.rs`.
 
 ### Den korte opskrift
 

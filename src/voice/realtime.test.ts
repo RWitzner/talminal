@@ -186,7 +186,7 @@ describe("Realtime schema v3", () => {
       audio: {
         input: {
           format: { type: "audio/pcm", rate: 24_000 },
-          transcription: { model: "gpt-4o-transcribe", language: "da" },
+          transcription: { model: "gpt-transcribe", languages: ["da"] },
           turn_detection: {
             type: "server_vad",
             threshold: 0.5,

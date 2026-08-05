@@ -19,8 +19,12 @@ function createTestStt(
   options: Partial<Parameters<typeof createOpenAiSttClient>[0]> = {},
 ) {
   return createOpenAiSttClient({
-    model: "gpt-4o-transcribe",
+    model: "gpt-transcribe",
     endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
+    // Defaulten her er den ENESTE rutes dialekt. Testene der maaler det
+    // modsatte felt saetter den eksplicit — se `sender sproghintet i rutens
+    // dialekt` nedenfor.
+    languageField: "plural",
     ...options,
   });
 }
@@ -120,8 +124,8 @@ describe("createOpenAiSttClient", () => {
           input: {
             format: { type: "audio/pcm", rate: 24000 },
             transcription: {
-              model: "gpt-4o-transcribe",
-              language: "da",
+              model: "gpt-transcribe",
+              languages: ["da"],
               prompt: STT_DOMAIN_PROMPT,
             },
             turn_detection: null,
@@ -443,8 +447,11 @@ describe("STT configuration", () => {
   it("model_option_overrides_default", async () => {
     vi.mocked(invoke).mockResolvedValue({ value: "sk-test-key", expires_at: 123 });
     vi.stubGlobal("WebSocket", FakeWebSocket);
+    // Vaerdien er med vilje ikke et rigtigt modelnavn: testen beviser at
+    // OPTIONEN slaar igennem, og en streng der ligner en model kunne laeses
+    // som at netop den model stadig er i brug et sted.
     const client = createTestStt({
-      model: "gpt-4o-transcribe",
+      model: "model-fra-optionen",
       prompt: "Eget dom?ne",
     });
 
@@ -455,10 +462,74 @@ describe("STT configuration", () => {
     await started;
 
     expect(JSON.parse(ws.sent[0]).session.audio.input.transcription).toEqual({
-      model: "gpt-4o-transcribe",
-      language: "da",
+      model: "model-fra-optionen",
+      languages: ["da"],
       prompt: "Eget dom?ne",
     });
+  });
+
+  // Keywords er brugerens egne ord. De to grene er ikke symmetriske: en TOM
+  // liste maa ikke sende `keywords: []`, men udelade feltet helt — for den
+  // model der svarer 400 paa feltet, er et tomt array lige saa ukendt som et
+  // fyldt.
+  it("sender keywords naar der er nogen, og udelader feltet naar der ikke er", async () => {
+    vi.mocked(invoke).mockResolvedValue({ value: "sk-test-key", expires_at: 123 });
+
+    FakeWebSocket.instances.length = 0;
+    const medOrd = createTestStt({
+      keywords: ["TalminalMCP", "Codex"],
+      prompt: null,
+    });
+    let started = medOrd.start();
+    await flushTimers();
+    FakeWebSocket.instances[0].open();
+    await started;
+    expect(
+      JSON.parse(FakeWebSocket.instances[0].sent[0]).session.audio.input
+        .transcription.keywords,
+    ).toEqual(["TalminalMCP", "Codex"]);
+    medOrd.abort();
+
+    FakeWebSocket.instances.length = 0;
+    const udenOrd = createTestStt({ keywords: [], prompt: null });
+    started = udenOrd.start();
+    await flushTimers();
+    FakeWebSocket.instances[0].open();
+    await started;
+    expect(
+      JSON.parse(FakeWebSocket.instances[0].sent[0]).session.audio.input
+        .transcription,
+    ).not.toHaveProperty("keywords");
+    udenOrd.abort();
+  });
+
+  /// Dialekten er hele grunden til at `languageField` findes. Testen maaler
+  /// BEGGE grene, fordi den farlige fejl er tavs: sender man `language` til en
+  /// model der vil have `languages`, svarer API'et 200 og ignorerer hintet —
+  /// intet her ville faelde uden en eksplicit assertion paa feltNAVNET.
+  it("sender sproghintet i rutens dialekt", async () => {
+    vi.mocked(invoke).mockResolvedValue({ value: "sk-test-key", expires_at: 123 });
+
+    for (const [field, expected] of [
+      ["plural", { languages: ["da"] }],
+      ["singular", { language: "da" }],
+    ] as const) {
+      FakeWebSocket.instances.length = 0;
+      const client = createTestStt({ languageField: field, prompt: null });
+      const started = client.start();
+      await flushTimers();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+      await started;
+
+      const sent = JSON.parse(ws.sent[0]).session.audio.input.transcription;
+      expect(sent).toEqual({ model: "gpt-transcribe", ...expected });
+      // Aldrig BEGGE felter: OpenAIs guide siger ordret "Don't send both".
+      expect(Object.keys(sent)).not.toContain(
+        field === "plural" ? "language" : "languages",
+      );
+      client.abort();
+    }
   });
 
   it("mint_failure_rejects_start", async () => {
@@ -477,7 +548,7 @@ describe("STT configuration", () => {
   it("udelader prompt når ruten ikke understøtter den", async () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     const client = createTestStt({
-      model: "openai/gpt-4o-transcribe",
+      model: "anden-udbyders-model",
       endpoint: "wss://example.test/v1/realtime",
       prompt: null,
       mintSecret: async () => ({ value: "ek-test", expires_at: 0 }),
@@ -496,7 +567,7 @@ describe("STT configuration", () => {
   it("bruger rutens endpoint og model", async () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     const client = createTestStt({
-      model: "openai/gpt-4o-transcribe",
+      model: "anden-udbyders-model",
       endpoint: "wss://example.test/v1/realtime",
       mintSecret: async () => ({ value: "ek-test", expires_at: 0 }),
     });
@@ -508,7 +579,7 @@ describe("STT configuration", () => {
 
     expect(ws.url).toBe("wss://example.test/v1/realtime");
     expect(JSON.parse(ws.sent[0]).session.audio.input.transcription.model).toBe(
-      "openai/gpt-4o-transcribe",
+      "anden-udbyders-model",
     );
   });
 });
