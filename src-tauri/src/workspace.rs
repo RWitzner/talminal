@@ -101,11 +101,27 @@ pub struct Settings {
     #[serde(default = "default_agent")]
     pub default_agent: String,
     /// Rute-slug for tale-til-tekst. Se `providers::STT_ROUTES`.
+    ///
+    /// Feltet har BEVIDST intet UI siden 2026-08-05: der er kun én STT-rute, og
+    /// et valg med ét element er stoej. Det er ikke dermed doedvaegt — det er
+    /// mekanismen `resolve_voice_routes` slaar op i, og den skal findes uanset
+    /// om der aktuelt er ét eller flere valg. Bliver der en rute mere, er det
+    /// UI'et der skal tilbage (`Settings.tsx`s `ProviderSection`), ikke feltet.
     #[serde(default = "default_stt_provider")]
     pub stt_provider: String,
     /// Rute-slug for kommando-routing. Se `providers::ROUTER_ROUTES`.
     #[serde(default = "default_routing_provider")]
     pub routing_provider: String,
+    /// Brugerens egne ord til STT'ens `keywords`-felt — termer der er svaere at
+    /// hoere rigtigt (produktnavne, agent-navne, forkortelser).
+    ///
+    /// INTET `#[serde(default)]` paa feltet, og det er med vilje: structen har
+    /// allerede `#[serde(default)]` paa container-niveau (se derive'et
+    /// ovenfor), som giver `Settings::default()`s liste naar feltet mangler i
+    /// filen. Skriver man kortformen paa feltet, vinder den over containeren og
+    /// resolver til `Vec::default()` = TOM — og saa ville hver eksisterende
+    /// bruger tavst miste standardlisten ved foerste indlaesning.
+    pub stt_keywords: Vec<String>,
     /// Diktering (hold nede = optag, slip = indsaet i det fokuserede korts
     /// composer). Samme accelerator-grammatik som `ptt_hotkey`, men sin egen
     /// slot i polleren — se `wake_hotkey::HotkeySlot`.
@@ -181,8 +197,59 @@ impl Default for Settings {
             routing_provider: default_routing_provider(),
             dictation_hotkey: DEFAULT_DICTATION_HOTKEY.to_string(),
             dictation_submit: false,
+            stt_keywords: default_stt_keywords(),
         }
     }
+}
+
+/// Standard-keywords: de ord Talminal selv bruger, som en model kan hoere
+/// forkert. Kriteriet er AKUSTISK — kan ordet forveksles? — ikke om ordet er
+/// vigtigt.
+///
+/// `TalminalMCP` er maalt: uden hintet blev det transskriberet "Terminal".
+/// `terminal` er ordet man SIGER ("aabn tre nye terminaler"); at det ogsaa
+/// staar i `STT_DOMAIN_PROMPT` er uskadeligt — maalingen viste at de to
+/// sameksisterer. `Codex` er den kritiske: hoeres den forkert, degraderer
+/// routeren agenten til null, og null resolver til `default_agent` = "claude",
+/// saa brugeren bad om Codex og fik Claude. `Claude` er med for det spejlvendte
+/// tilfaelde, som kun rammer den der har sat sin default til codex.
+///
+/// Skrives som ÉT token hver: en flerords-frase forplanter sig ikke til ordene
+/// i den (maalt — "Talminal MCP" med mellemrum blev ignoreret).
+fn default_stt_keywords() -> Vec<String> {
+    ["TalminalMCP", "terminal", "Claude", "Codex"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Tegn OpenAI eksplicit forbyder i et keyword.
+const KEYWORD_FORBIDDEN: [char; 4] = ['<', '>', '\r', '\n'];
+
+/// Vores eget loft, ikke API'ets. Docs siger kun "maximum length enforced by
+/// model", saa tallet er en beskyttelse mod en indsat roman — ikke en graense
+/// vi har maalt.
+const KEYWORD_MAX: usize = 100;
+
+/// Trim, fjern forbudte tegn, drop tomme, cap.
+///
+/// Bemaerk hvad den IKKE goer: en TOM liste faar ikke standardlisten tilbage.
+/// Det bryder med `normalized_slug`-konventionen lige nedenfor, hvor tom altid
+/// falder tilbage til defaulten — og det er bevidst. En ryddet keyword-liste er
+/// et VALG, og et valg der bliver overskrevet ved hver indlaesning er ikke et
+/// valg.
+pub fn normalize_keywords(raw: &[String]) -> Vec<String> {
+    raw.iter()
+        .map(|word| {
+            word.chars()
+                .filter(|c| !KEYWORD_FORBIDDEN.contains(c))
+                .collect::<String>()
+                .trim()
+                .to_string()
+        })
+        .filter(|word| !word.is_empty())
+        .take(KEYWORD_MAX)
+        .collect()
 }
 
 /// TOLERANT laese-side (spec §3, wallpaper-moenstret; GPT-review B6): en
@@ -229,6 +296,9 @@ pub fn normalize_settings(mut s: Settings) -> Settings {
         |v| crate::providers::router_route(v).is_some(),
         default_routing_provider,
     );
+    // Ikke gennem `normalized_slug`: den ville give standardlisten tilbage naar
+    // resultatet er tomt, og en bevidst ryddet liste skal overleve.
+    s.stt_keywords = normalize_keywords(&s.stt_keywords);
     s
 }
 
@@ -587,6 +657,7 @@ pub struct SettingsInput {
     pub routing_provider: String,
     pub dictation_hotkey: String,
     pub dictation_submit: bool,
+    pub stt_keywords: Vec<String>,
 }
 
 pub fn set_settings(input: SettingsInput) -> Result<(), String> {
@@ -658,6 +729,12 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
         routing_provider,
         dictation_hotkey: dictation,
         dictation_submit: input.dictation_submit,
+        // Skrive-siden er ellers STRENG og afviser hvad den ikke kan lide, men
+        // et keyword har ingen "gyldig"-definition — kun tegn API'et forbyder.
+        // Derfor renses der frem for at afvises: at faa en gemning afvist fordi
+        // man kom til at skrive et "<" er ikke en bedre oplevelse end at tegnet
+        // bare forsvinder.
+        stt_keywords: normalize_keywords(&input.stt_keywords),
     })
 }
 

@@ -71,7 +71,18 @@ export function buildRealtimeSessionConfig({ apiAudio }: { apiAudio: boolean }) 
     audio: {
       input: {
         format: { type: "audio/pcm", rate: 24_000 },
-        transcription: { model: "gpt-4o-transcribe", language: "da" },
+        // Samme model og samme dialekt som pipeline-vejen (`providers.rs`'
+        // STT_ROUTES). Modellen staar hardkodet her og ikke via ruten, fordi
+        // denne motor er slukket: `voice_engine` normaliseres altid til
+        // "pipeline", saa App.tsx naar aldrig herind. Den opdateres alligevel,
+        // saa `gpt-4o-transcribe` ikke bliver staaende ét sted i traeet og
+        // saar tvivl om hvad der gaelder — `voice-eval/realtime-config.mjs`
+        // importerer stadig herfra.
+        //
+        // `languages` (array) og ikke `language`: gpt-transcribe tager
+        // flertalsformen, og den forkerte form giver 200 med et tavst ignoreret
+        // hint. Se `LanguageField` i providers.rs.
+        transcription: { model: "gpt-transcribe", languages: ["da"] },
         turn_detection: {
           type: "server_vad",
           threshold: 0.5,

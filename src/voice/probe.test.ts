@@ -21,9 +21,11 @@ const routes = (over: Record<string, unknown> = {}) =>
       slug: "openai",
       label: "OpenAI",
       endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
-      model: "gpt-4o-transcribe",
+      model: "gpt-transcribe",
       supports_partials: true,
       supports_domain_prompt: true,
+      language_field: "plural",
+      supports_keywords: true,
       ...over,
     },
     routing: {
@@ -53,8 +55,15 @@ describe("probeSttRoute", () => {
   it("bygger klienten ud fra rutens egne felter", async () => {
     await expect(probeSttRoute(routes())).resolves.toBe("Luk kort to og tre.");
     expect(sttMocks.createOpenAiSttClient).toHaveBeenCalledWith({
-      model: "gpt-4o-transcribe",
+      model: "gpt-transcribe",
       endpoint: "wss://api.openai.com/v1/realtime?intent=transcription",
+      // Dialekten skal med HERFRA og ikke fra en default i stt.ts: proben er
+      // det brugeren trykker paa for at faa vished, saa den skal sende
+      // praecis det ruten foreskriver.
+      languageField: "plural",
+      // Proben kaldes uden keywords her, saa feltet skal vaere tomt — ikke
+      // fravaerende. Testen nedenfor maaler at brugerens liste NAAR frem.
+      keywords: [],
       prompt: "ORDLISTE",
     });
   });
@@ -63,6 +72,23 @@ describe("probeSttRoute", () => {
     await probeSttRoute(routes({ supports_domain_prompt: false }));
     expect(sttMocks.createOpenAiSttClient).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: null }),
+    );
+  });
+
+  // Uden denne test kunne kaldestedet i Settings.tsx droppe keyword-argumentet
+  // og ALT ville staa groent — mens "Test forbindelsen" svarede groent paa en
+  // konfiguration brugeren aldrig taler paa.
+  it("sender brugerens keywords videre naar ruten kan tage dem", async () => {
+    await probeSttRoute(routes(), ["TalminalMCP", "Codex"]);
+    expect(sttMocks.createOpenAiSttClient).toHaveBeenCalledWith(
+      expect.objectContaining({ keywords: ["TalminalMCP", "Codex"] }),
+    );
+  });
+
+  it("udelader keywords naar ruten ikke kan tage dem", async () => {
+    await probeSttRoute(routes({ supports_keywords: false }), ["TalminalMCP"]);
+    expect(sttMocks.createOpenAiSttClient).toHaveBeenCalledWith(
+      expect.objectContaining({ keywords: [] }),
     );
   });
 

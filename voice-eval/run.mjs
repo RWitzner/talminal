@@ -53,6 +53,9 @@ const ROUTES = {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const AUDIO_MODE = process.argv.includes("--audio");
 const PARSE_ONLY = process.argv.includes("--parse-only");
+// Sender domaene-ordlisten med til STT'en, som appen goer. Se
+// `STT_DOMAIN_PROMPT` nedenfor for hvorfor det ikke er default.
+const STT_PROMPT_MODE = process.argv.includes("--stt-prompt");
 const CARDS = [1, 2, 3, 5].map((number) => ({ number }));
 const FOCUSED = { A: 2, B: null, C: 2 };
 // T6 (review fix): Gate 1's procentvise tærskler dækker KUN de oprindelige 41
@@ -521,9 +524,39 @@ async function audioFilesById() {
   );
 }
 
-async function transcribeAudio(file, apiKey) {
+/**
+ * STT-modellen eval'et transskriberer med.
+ *
+ * Skal foelge `providers.rs`' STT_ROUTES. Den stod hardkodet paa
+ * `gpt-4o-transcribe` og blev ikke opdaget da appen skiftede model — saa
+ * eval'et ville have maalt en model appen ikke bruger, og Gate 1's tal ville
+ * vaere afkoblet fra produktet uden at noget blev roedt.
+ *
+ * Overstyres med `--stt-model <navn>`, saa to STT-modeller kan sammenlignes
+ * over praecis samme lyd og samme scoringskode.
+ */
+const DEFAULT_STT_MODEL = "gpt-transcribe";
+
+/**
+ * Domaene-prompten sendes KUN med `--stt-prompt`.
+ *
+ * Det er med vilje ikke default: alle historiske tal (Gate 1 41/41, T6 7/7) er
+ * maalt UDEN prompt, og at taende den som standard ville flytte baseline uden
+ * at nogen bad om det. Men appen SENDER den, saa uden flaget maaler eval'et
+ * ikke den vej brugeren koerer paa — foerst med flaget er de to ens.
+ *
+ * Bemaerk at fil-endpointet uanset hvad er en anden transport end appens
+ * realtime-session. Flaget lukker model- og prompt-hullet, ikke transport-
+ * hullet.
+ */
+const STT_DOMAIN_PROMPT =
+  "Dansk kommando til en canvas af nummererede kort: kort et, to, tre, fire, fem, seks, syv, otte, ni, ti. Typiske verber: luk, genstart, åbn, opret, send, sig til, bed. Ord som terminal, browser, projekt, canvas. Flere kommandoer kan kædes med og. Blandet dansk og engelsk kan forekomme.";
+
+async function transcribeAudio(file, apiKey, options = {}) {
+  const model = options.model ?? DEFAULT_STT_MODEL;
   const form = new FormData();
-  form.append("model", "gpt-4o-transcribe");
+  form.append("model", model);
+  if (options.prompt) form.append("prompt", STT_DOMAIN_PROMPT);
   form.append(
     "file",
     new Blob([await readFile(file)], { type: audioMime(path.extname(file)) }),
@@ -651,7 +684,10 @@ async function main() {
     // u31-u48 har ingen indspilninger — ground-truth-teksten er fallback.
     const transcript =
       AUDIO_MODE && audioFiles.has(row.id)
-        ? await transcribeAudio(audioFiles.get(row.id), sttApiKey)
+        ? await transcribeAudio(audioFiles.get(row.id), sttApiKey, {
+            model: argValue("--stt-model") ?? undefined,
+            prompt: STT_PROMPT_MODE,
+          })
         : row.utterance;
     const intents = await routeVoiceTranscript(transcript, {
       transport: routerTransport,
@@ -769,6 +805,16 @@ async function main() {
   // ROUTER_MODEL længere. Linjen refererede stadig til den — og faldt først
   // HER, i opsummeringen, efter alle 48 kald var betalt og bestået.
   console.log(`Model: ${route.model} (rute: ${routeName})`);
+  // STT-modellen SKAL staa i opsummeringen. Den var hardkodet og usynlig, og
+  // det er praecis derfor den kunne blive haengende paa en model appen ikke
+  // laengere brugte: et tal uden en kvittering paa hvad der blev maalt, laeses
+  // som om det gjaldt produktet.
+  if (AUDIO_MODE) {
+    const sttModel = argValue("--stt-model") ?? DEFAULT_STT_MODEL;
+    console.log(
+      `STT: ${sttModel} · domaene-prompt ${STT_PROMPT_MODE ? "SENDT" : "ikke sendt"} · transport: fil (appen koerer realtime)`,
+    );
+  }
   if (routerLatencies.length > 0) {
     const sorted = [...routerLatencies].sort((a, b) => a - b);
     console.log(

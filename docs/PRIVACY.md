@@ -11,7 +11,8 @@ og hvornår.
 
 | Hvad | Hvorhen | Hvornår |
 |---|---|---|
-| **Din stemme** (PCM16, 24 kHz) | `wss://api.openai.com/v1/realtime` — modellen `gpt-4o-transcribe` eller `gpt-4o-mini-transcribe`, alt efter dit valg | Kun mens du holder push-to-talk eller diktér-tasten nede |
+| **Din stemme** (PCM16, 24 kHz) | `wss://api.openai.com/v1/realtime` — modellen `gpt-transcribe` | Kun mens du holder push-to-talk eller diktér-tasten nede |
+| **Dine keywords** (Indstillinger → Stemme) | Samme sted, i hver eneste stemme-session | Hver gang mikrofonen åbnes — også når du ikke når at sige noget |
 | **Transskriptet** af det du sagde | Den router-udbyder du har valgt (se nedenfor) | Efter hver ytring |
 | **Dine prompts og det agenten læser af dine projektfiler** | Anthropic, via Claude Code | Når du bruger et Claude-kort |
 | **Samme, til OpenAI** | OpenAI, via Codex CLI | Når du bruger et codex-kort |

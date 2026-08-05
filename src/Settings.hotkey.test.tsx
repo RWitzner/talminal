@@ -146,9 +146,14 @@ it("en gemt kontakt paa true kan slaas FRA igen", async () => {
   expect(savedSettings().dictation_submit).toBe(false);
 });
 
-it("ENHVER gem-vej sender ogsaa dikterings-felterne", async () => {
+it("ENHVER gem-vej sender ogsaa dikterings-felterne og keyword-listen", async () => {
   // Regressionsvaern for `deny_unknown_fields` paa Rust-sidens SettingsInput:
   // udelades ét felt, fejler ALLE settings-gem — ikke kun dikteringens.
+  //
+  // `stt_keywords` kom til 2026-08-05 og har praecis samme sagsforhold: den
+  // gemmes fra en HELT anden sektion end hotkey-optageren, saa uden denne
+  // assertion ville et glemt felt i `saveSettingsPatch` foerst vise sig naar
+  // en bruger aendrede noget tredje.
   await mount();
   const reset = container.querySelector<HTMLButtonElement>(
     "[data-hotkey-reset]",
@@ -158,6 +163,7 @@ it("ENHVER gem-vej sender ogsaa dikterings-felterne", async () => {
   const settings = savedSettings();
   expect(settings.dictation_hotkey).toBe("CmdOrCtrl+Shift+KeyD");
   expect(settings.dictation_submit).toBe(false);
+  expect(settings.stt_keywords).toBeDefined();
 });
 
 it("nulstil paa diktér-optageren skriver dens egen standard", async () => {

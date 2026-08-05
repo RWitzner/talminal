@@ -305,9 +305,14 @@ export default function App() {
   const voiceRoutesRef = useRef<VoiceRoutes | null>(null);
   const captureReadyRef = useRef<Promise<string | null>>(Promise.resolve(null));
   const voiceEngineRef = useRef<string | null>(null);
+  // Brugerens egne STT-keywords. Ref og ikke state af samme grund som ruterne:
+  // stemme-sessionen laeses ved TRYK, og et valg gemt midt i en session skal
+  // gaelde naeste ytring uden at genskabe pipelinen.
+  const sttKeywordsRef = useRef<readonly string[]>([]);
   dryRunRef.current = dryRun;
   cardsRef.current = cards ?? [];
   voiceRoutesRef.current = workspace?.voice_routes ?? null;
+  sttKeywordsRef.current = workspace?.settings?.stt_keywords ?? [];
 
   // Monotont refresh-token: to overlappende refetches kan resolve i omvendt
   // rækkefølge, og et forældet snapshot ville så vinde permanent (der er
@@ -997,6 +1002,8 @@ export default function App() {
           return createOpenAiSttClient({
             model: route.model,
             endpoint: route.endpoint,
+            languageField: route.language_field,
+            keywords: route.supports_keywords ? sttKeywordsRef.current : [],
             prompt: route.supports_domain_prompt ? STT_DOMAIN_PROMPT : null,
           });
         },
@@ -1079,6 +1086,8 @@ export default function App() {
           return createOpenAiSttClient({
             model: route.model,
             endpoint: route.endpoint,
+            languageField: route.language_field,
+            keywords: route.supports_keywords ? sttKeywordsRef.current : [],
             prompt: route.supports_domain_prompt ? STT_DOMAIN_PROMPT : null,
           });
         },

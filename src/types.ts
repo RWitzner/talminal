@@ -92,7 +92,15 @@ export interface WorkspaceSettings {
   dictation_hotkey?: string;
   /** Skal dikteringen selv trykke Enter? Default (og udeladt) er `false`. */
   dictation_submit?: boolean;
+  /** Brugerens egne STT-keywords. Optional af samme grund som felterne
+   *  ovenfor: en settings.json fra før feltet fandtes leverer det ikke.
+   *  Bemærk at en TOM liste ikke er det samme som et manglende felt — tom
+   *  betyder "brugeren har ryddet listen" og skal respekteres. */
+  stt_keywords?: string[];
 }
+
+/** Rust: `providers::LanguageField`. Hvilket felt modellen tager sproghintet i. */
+export type LanguageField = "singular" | "plural";
 
 export interface SttRoute {
   slug: string;
@@ -101,6 +109,13 @@ export interface SttRoute {
   model: string;
   supports_partials: boolean;
   supports_domain_prompt: boolean;
+  /** "plural" => `languages: ["da"]`; "singular" => `language: "da"`. Et
+   *  forkert felt fejler TAVST i opgraderingsretningen — se `LanguageField`
+   *  i `providers.rs` for maalingen. */
+  language_field: LanguageField;
+  /** Falsk => keyword-listen må IKKE sendes. De to 4o-modeller AFVISER feltet
+   *  med 400, så en rute uden understøttelse ville brække hver ytring. */
+  supports_keywords: boolean;
   key_slot: string;
 }
 

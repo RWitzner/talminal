@@ -89,6 +89,10 @@ fn settings_input(
         // dikteringen saetter dem selv paa den returnerede struct.
         dictation_hotkey: workspace::DEFAULT_DICTATION_HOTKEY.to_string(),
         dictation_submit: false,
+        // TOM og ikke standardlisten: helperen skal ikke smugle en default ind
+        // i tests der ikke handler om keywords. De tests der GOER, saetter den
+        // selv paa den returnerede struct.
+        stt_keywords: Vec::new(),
     }
 }
 
@@ -890,32 +894,32 @@ fn workspace_response_carries_the_resolved_routes_but_settings_does_not() {
         routes.stt.slug, "openai",
         "ukendt stt-slug skal falde tilbage"
     );
-    assert_eq!(routes.stt.model, "gpt-4o-transcribe");
+    assert_eq!(routes.stt.model, "gpt-transcribe");
     assert!(routes.stt.supports_partials);
     // Routing-OpenRouter lever videre — det var kun STT-ruten der forsvandt.
     assert_eq!(routes.routing.slug, "google");
     assert_eq!(routes.routing.model, "gemini-3.1-flash-lite");
 }
 
-/// Slug'et skal resolvere til mini-ruten. `voice_routes.stt.model` er det
-/// eneste sted `stt.ts` faar modelnavnet fra — baade for pipelinen og for
-/// dikteringen — saa vaelger resolveringen forkert, taler brugeren videre til
-/// den store model uden at kunne se det.
+/// Afloeser `mini_slug_resolves_all_the_way_to_the_mini_model`, som forsvandt
+/// med mini-ruten 2026-08-05. Hvor den gamle test beviste at slug'et naaede
+/// FREM til mini-modellen, beviser denne at det ikke laengere kan.
 ///
-/// Testen daekker RESOLVERINGEN alene; den kalder `resolve_voice_routes`
-/// direkte og roerer hverken serialisering eller TS-siden.
+/// Det er den eneste automatiske daekning af migreringen. En bruger der har
+/// valgt mini har `"openai-mini"` staaende i sin settings.json lige nu, og der
+/// skrives ikke tilbage ved indlaesning — vaerdien bliver staaende for evigt,
+/// indtil noget andet gemmes. Falder denne test, taler den bruger til en model
+/// der ikke findes, og fejlen viser sig som en stum mikrofon.
 #[test]
-fn mini_slug_resolves_all_the_way_to_the_mini_model() {
+fn the_retired_mini_slug_falls_back_to_the_only_route() {
     let settings = talminal_canvas_lib::workspace::Settings {
         stt_provider: "openai-mini".to_string(),
         ..Default::default()
     };
 
     let routes = talminal_canvas_lib::workspace::resolve_voice_routes(&settings);
-    assert_eq!(routes.stt.slug, "openai-mini");
-    assert_eq!(routes.stt.model, "gpt-4o-mini-transcribe");
-    // Samme noegle og samme endpoint som den store rute: valget maa ikke
-    // pludselig kraeve en konto brugeren ikke har.
+    assert_eq!(routes.stt.slug, "openai", "nedlagt slug skal falde tilbage");
+    assert_eq!(routes.stt.model, "gpt-transcribe");
     assert_eq!(routes.stt.key_slot, "provider_key_openai");
     assert_eq!(
         routes.stt.endpoint,
@@ -1192,9 +1196,90 @@ fn settings_input_rejects_a_missing_field() {
         "manglende dictation_hotkey skulle vaere en deserialiseringsfejl"
     );
 
+    let uden_keywords = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
+    assert!(
+        serde_json::from_str::<SettingsInput>(uden_keywords).is_err(),
+        "manglende stt_keywords skulle vaere en deserialiseringsfejl"
+    );
+
     // Kontrolproeve: med ALLE felter parser den.
-    let komplet = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
+    let komplet = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false,"stt_keywords":["TalminalMCP"]}"#;
     serde_json::from_str::<SettingsInput>(komplet).expect("komplet wire-form skal parse");
+}
+
+/// En settings.json fra foer feltet fandtes skal give STANDARDLISTEN, ikke en
+/// tom liste.
+///
+/// Det haenger paa at feltet IKKE har sit eget `#[serde(default)]`: structen
+/// har attributten paa container-niveau, og en felt-attribut ville vinde over
+/// den og resolve til `Vec::default()` = tom. Skriver nogen kortformen paa
+/// feltet i god tro, mister hver eksisterende bruger sin liste uden en fejl —
+/// og denne test er det eneste sted det falder.
+#[test]
+fn gammel_settings_json_uden_keywords_faar_standardlisten() {
+    let legacy: Settings = serde_json::from_str(
+        r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","wallpaper":"blue-folds"}"#,
+    )
+    .expect("legacy settings skal parse");
+    assert_eq!(
+        legacy.stt_keywords,
+        Settings::default().stt_keywords,
+        "manglende felt skal give standardlisten, ikke tom"
+    );
+    assert!(legacy.stt_keywords.contains(&"TalminalMCP".to_string()));
+}
+
+/// En BEVIDST ryddet liste skal overleve normaliseringen.
+///
+/// Dette bryder med `normalized_slug`-konventionen lige ved siden af, hvor tom
+/// altid falder tilbage til defaulten. Bruddet er med vilje: en tom
+/// keyword-liste er et valg, og et valg der bliver overskrevet ved hver
+/// indlaesning er ikke et valg. Spejler nogen nabokoden og skriver "tom =>
+/// default", faelder denne test det.
+#[test]
+fn en_bevidst_tom_keyword_liste_overlever() {
+    let ryddet: Settings =
+        serde_json::from_str(r#"{"stt_keywords":[]}"#).expect("tom liste skal parse");
+    assert!(ryddet.stt_keywords.is_empty(), "tom liste skal parse som tom");
+
+    let efter = talminal_canvas_lib::workspace::normalize_settings(ryddet);
+    assert!(
+        efter.stt_keywords.is_empty(),
+        "normaliseringen maa ikke give standardlisten tilbage"
+    );
+}
+
+/// Rensningen: trim, forbudte tegn ud, tomme droppet, loft haandhaevet.
+///
+/// `<` `>` CR og LF er dem OpenAIs docs forbyder. De STRIPPES frem for at
+/// afvises — at faa en gemning afvist fordi man kom til at skrive et "<" er
+/// ikke en bedre oplevelse end at tegnet forsvinder.
+#[test]
+fn keywords_renses_men_afvises_ikke() {
+    let raw: Vec<String> = vec![
+        "  TalminalMCP  ".to_string(),
+        "Cod<ex>".to_string(),
+        String::new(),
+        "   ".to_string(),
+        "linje\nskift".to_string(),
+    ];
+    let renset = talminal_canvas_lib::workspace::normalize_keywords(&raw);
+    assert_eq!(
+        renset,
+        vec![
+            "TalminalMCP".to_string(),
+            "Codex".to_string(),
+            "linjeskift".to_string(),
+        ]
+    );
+
+    // Loftet er VORES, ikke API'ets: docs siger kun "maximum length enforced
+    // by model". Testen laaser at der ER et loft, ikke at 100 er rigtigt.
+    let mange: Vec<String> = (0..250).map(|i| format!("ord{i}")).collect();
+    assert_eq!(
+        talminal_canvas_lib::workspace::normalize_keywords(&mange).len(),
+        100
+    );
 }
 
 #[test]
