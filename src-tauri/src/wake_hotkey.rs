@@ -78,10 +78,7 @@ pub enum Trigger {
     /// triggere baerer samme `PadInput`-diskriminant-data hvis man udelader
     /// koden. Uden feltet ville LT-til-PTT og RT-til-diktering blive afvist
     /// som "samme tast".
-    Gamepad {
-        code: &'static str,
-        input: PadInput,
-    },
+    Gamepad { code: &'static str, input: PadInput },
 }
 
 /// Hvor paa pad'en knappen sidder. XInput deler tilstanden i to: 14 bit-flag i
@@ -303,9 +300,21 @@ const GAMEPAD_TABLE: &[(&str, &str, PadInput)] = &[
     ("gamepadls", "GamepadLS", PadInput::Button(0x0040)),
     ("gamepadrs", "GamepadRS", PadInput::Button(0x0080)),
     ("gamepaddpadup", "GamepadDpadUp", PadInput::Button(0x0001)),
-    ("gamepaddpaddown", "GamepadDpadDown", PadInput::Button(0x0002)),
-    ("gamepaddpadleft", "GamepadDpadLeft", PadInput::Button(0x0004)),
-    ("gamepaddpadright", "GamepadDpadRight", PadInput::Button(0x0008)),
+    (
+        "gamepaddpaddown",
+        "GamepadDpadDown",
+        PadInput::Button(0x0002),
+    ),
+    (
+        "gamepaddpadleft",
+        "GamepadDpadLeft",
+        PadInput::Button(0x0004),
+    ),
+    (
+        "gamepaddpadright",
+        "GamepadDpadRight",
+        PadInput::Button(0x0008),
+    ),
     ("gamepadlt", "GamepadLT", PadInput::Trigger(PadSide::Left)),
     ("gamepadrt", "GamepadRT", PadInput::Trigger(PadSide::Right)),
 ];
@@ -752,10 +761,7 @@ impl SlotArbiter {
     /// -> `trigger_down = false` -> faldende kant -> `Release` ad den normale
     /// vej, som rydder ejerskabet. Ejer musen holdet naar headsettet forbinder,
     /// fortsaetter det derfor uforstyrret.
-    pub fn suppress_pad_bindings(
-        &mut self,
-        combos: &[Option<KeyCombo>; BINDINGS_PER_SLOT],
-    ) {
+    pub fn suppress_pad_bindings(&mut self, combos: &[Option<KeyCombo>; BINDINGS_PER_SLOT]) {
         for (i, combo) in combos.iter().enumerate() {
             if matches!(combo, Some(c) if matches!(c.trigger, Trigger::Gamepad { .. })) {
                 self.detectors[i].suppress_until_release();
@@ -851,8 +857,7 @@ impl SlotBindings {
     }
 }
 
-static COMBOS: Mutex<[SlotBindings; SLOT_COUNT]> =
-    Mutex::new([SlotBindings::EMPTY; SLOT_COUNT]);
+static COMBOS: Mutex<[SlotBindings; SLOT_COUNT]> = Mutex::new([SlotBindings::EMPTY; SLOT_COUNT]);
 /// Faelles for begge slots: `HotkeyRecorder` suspenderer mens brugeren optager
 /// en NY genvej, og da skal ingen af dem fyre.
 static SUSPENDED: AtomicBool = AtomicBool::new(false);
@@ -877,11 +882,7 @@ static POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 /// kalderens ansvar at have oversat til `None` foerst: `parse_accelerator("")`
 /// er en FEJL efter den delte grammatik (se `hotkey-grammar.fixtures.json`),
 /// ikke en maade at sige "ingen binding" paa.
-pub fn set_accelerators(
-    slot: HotkeySlot,
-    primary: &str,
-    alt: Option<&str>,
-) -> Result<(), String> {
+pub fn set_accelerators(slot: HotkeySlot, primary: &str, alt: Option<&str>) -> Result<(), String> {
     let primary = parse_accelerator(primary)?;
     let alt = alt.map(parse_accelerator).transpose()?;
     if let Some(alt) = alt {
@@ -1292,9 +1293,15 @@ mod tests {
         let mut arbiter = SlotArbiter::default();
         let combos = two_bare_bindings();
         let shared = focused();
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
         assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
-        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, false]).edge,
+            Some(Edge::Release)
+        );
         assert_eq!(arbiter.held_by(), None);
     }
 
@@ -1305,7 +1312,10 @@ mod tests {
         let mut arbiter = SlotArbiter::default();
         let combos = two_bare_bindings();
         let shared = focused();
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
         assert_eq!(arbiter.held_by(), Some(0));
         // Den anden binding trykkes midt i holdet — intet maa ske.
         assert_eq!(arbiter.step(&combos, &shared, [true, true]).edge, None);
@@ -1324,7 +1334,10 @@ mod tests {
         assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
         assert_eq!(arbiter.held_by(), Some(0));
         // Foerst naar EJEREN slipper, er holdet slut.
-        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, false]).edge,
+            Some(Edge::Release)
+        );
     }
 
     #[test]
@@ -1337,14 +1350,20 @@ mod tests {
         let shared = focused();
         arbiter.step(&combos, &shared, [true, false]);
         arbiter.step(&combos, &shared, [true, true]);
-        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, true]).edge,
+            Some(Edge::Release)
+        );
         assert_eq!(arbiter.held_by(), None);
         // LT er stadig nede — men den fyrer ikke uden et fysisk slip.
         assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, None);
         assert_eq!(arbiter.held_by(), None);
         // Slip og tryk igen: nu ejer den.
         arbiter.step(&combos, &shared, [false, false]);
-        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, true]).edge,
+            Some(Edge::Press)
+        );
         assert_eq!(arbiter.held_by(), Some(1));
     }
 
@@ -1353,9 +1372,15 @@ mod tests {
         let mut arbiter = SlotArbiter::default();
         let combos = two_bare_bindings();
         let shared = focused();
-        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, true]).edge,
+            Some(Edge::Press)
+        );
         assert_eq!(arbiter.held_by(), Some(1));
-        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, false]).edge,
+            Some(Edge::Release)
+        );
     }
 
     #[test]
@@ -1372,7 +1397,10 @@ mod tests {
         assert_eq!(arbiter.held_by(), None);
         // Og slotten er ikke doedlaast bagefter.
         arbiter.step(&combos, &shared, [false, false]);
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
     }
 
     #[test]
@@ -1394,7 +1422,10 @@ mod tests {
         assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, None);
         // Efter et fysisk slip virker den igen.
         arbiter.step(&combos, &shared, [false, false]);
-        assert_eq!(arbiter.step(&combos, &shared, [false, true]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, true]).edge,
+            Some(Edge::Press)
+        );
     }
 
     #[test]
@@ -1404,11 +1435,17 @@ mod tests {
         let mut arbiter = SlotArbiter::default();
         let combos = two_bare_bindings();
         let shared = focused();
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
         arbiter.suppress_pad_bindings(&combos);
         assert_eq!(arbiter.held_by(), Some(0));
         assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, None);
-        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, false]).edge,
+            Some(Edge::Release)
+        );
     }
 
     #[test]
@@ -1418,7 +1455,10 @@ mod tests {
         let shared = focused();
         arbiter.suppress_pad_bindings(&combos);
         // Musen er upaavirket.
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
     }
 
     #[test]
@@ -1426,8 +1466,14 @@ mod tests {
         let mut arbiter = SlotArbiter::default();
         let combos = [Some(parse_accelerator("Mouse4").expect("mouse4")), None];
         let shared = focused();
-        assert_eq!(arbiter.step(&combos, &shared, [true, false]).edge, Some(Edge::Press));
-        assert_eq!(arbiter.step(&combos, &shared, [false, false]).edge, Some(Edge::Release));
+        assert_eq!(
+            arbiter.step(&combos, &shared, [true, false]).edge,
+            Some(Edge::Press)
+        );
+        assert_eq!(
+            arbiter.step(&combos, &shared, [false, false]).edge,
+            Some(Edge::Release)
+        );
     }
 
     #[test]
@@ -1631,7 +1677,10 @@ mod tests {
         };
         let trigger = parse_accelerator("Mouse4").unwrap().trigger;
         let mut cache = TriggerVkCache::default();
-        assert_eq!(cache.probe_for(&trigger, &r), (TriggerProbe::Vk(0x05), None));
+        assert_eq!(
+            cache.probe_for(&trigger, &r),
+            (TriggerProbe::Vk(0x05), None)
+        );
     }
 
     /// Gamepad'en maa aldrig roere layout-oploesningen: `FakeResolver` her har

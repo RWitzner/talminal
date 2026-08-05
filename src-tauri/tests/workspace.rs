@@ -1318,26 +1318,16 @@ fn worker_set_settings_afviser_kolliderende_genveje() {
     // en kollision ind gennem et alt-felt.
 
     // Inden for stemme-slotten.
-    let mut ptt_intern = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut ptt_intern =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     ptt_intern.ptt_hotkey_alt = Some("Mouse4".to_string());
     let error =
         workspace::set_settings(ptt_intern).expect_err("samme tast i begge ptt-felter afvises");
     assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
 
     // Inden for dikterings-slotten.
-    let mut dikt_intern = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut dikt_intern =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     dikt_intern.dictation_hotkey = "GamepadLT".to_string();
     dikt_intern.dictation_hotkey_alt = Some("GamepadLT".to_string());
     let error =
@@ -1345,28 +1335,18 @@ fn worker_set_settings_afviser_kolliderende_genveje() {
     assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
 
     // Paa tvaers via ALT-felterne — den kollision der ikke fandtes foer.
-    let mut alt_mod_alt = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut alt_mod_alt =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     alt_mod_alt.ptt_hotkey_alt = Some("GamepadLT".to_string());
     alt_mod_alt.dictation_hotkey = "Mouse5".to_string();
     alt_mod_alt.dictation_hotkey_alt = Some("GamepadLT".to_string());
-    let error = workspace::set_settings(alt_mod_alt)
-        .expect_err("to alt-bindinger paa samme tast afvises");
+    let error =
+        workspace::set_settings(alt_mod_alt).expect_err("to alt-bindinger paa samme tast afvises");
     assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
 
     // Paa tvaers: ptt-alt mod dikterings-PRIMAER.
-    let mut alt_mod_primaer = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut alt_mod_primaer =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     alt_mod_primaer.ptt_hotkey_alt = Some("GamepadLT".to_string());
     alt_mod_primaer.dictation_hotkey = "GamepadLT".to_string();
     let error = workspace::set_settings(alt_mod_primaer)
@@ -1374,13 +1354,7 @@ fn worker_set_settings_afviser_kolliderende_genveje() {
     assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
 
     // Kontrolproeve for alt-felterne: fire FORSKELLIGE taster gemmes fint.
-    let mut fire_ok = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut fire_ok = settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     fire_ok.ptt_hotkey_alt = Some("GamepadLT".to_string());
     fire_ok.dictation_hotkey = "Mouse5".to_string();
     fire_ok.dictation_hotkey_alt = Some("GamepadRT".to_string());
@@ -1390,13 +1364,7 @@ fn worker_set_settings_afviser_kolliderende_genveje() {
     assert_eq!(stored.dictation_hotkey_alt.as_deref(), Some("GamepadRT"));
 
     // Tom streng er RYD, ikke en parse-fejl.
-    let mut ryddet = settings_input(
-        "Mouse4",
-        "Shift+Escape",
-        "pipeline",
-        "blue-folds",
-        "claude",
-    );
+    let mut ryddet = settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
     ryddet.ptt_hotkey_alt = Some("   ".to_string());
     workspace::set_settings(ryddet).expect("whitespace i alt-feltet er en ryd");
     assert_eq!(workspace::load_settings().ptt_hotkey_alt, None);
