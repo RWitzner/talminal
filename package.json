@@ -1,6 +1,6 @@
 {
   "name": "talminal",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Tal med dine terminaler. Stemmestyret canvas af agent-terminaler (Claude Code / Codex CLI) til Windows.",
   "license": "Apache-2.0",
   "author": "Robin Witzner",
