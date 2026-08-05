@@ -1,5 +1,5 @@
 {
-  "_comment": "Delt grammatik-kontrakt mellem wake_hotkey.rs og ptt.ts. Begge lag SKAL acceptere og afvise praecis det samme. Se spec 2026-07-28-voice-hotkey-vaelger-design.md.",
+  "_comment": "Delt grammatik-kontrakt mellem wake_hotkey.rs og ptt.ts. Begge lag SKAL acceptere og afvise praecis det samme. Se spec 2026-07-28-voice-hotkey-vaelger-design.md. Gamepad-tokens: ALLE 16 staar her med vilje — fixturen fanger kun det den opremser, og et token der findes i Rust men ikke i ptt.ts ville ellers foerst vise sig som en binding der kaster i frontenden.",
   "valid": [
     { "accel": "Ctrl+Shift+Space",       "ctrl": true,  "shift": true,  "alt": false, "code": "Space" },
     { "accel": "CmdOrCtrl+Shift+Space",  "ctrl": true,  "shift": true,  "alt": false, "code": "Space" },
@@ -16,7 +16,26 @@
     { "accel": "Ctrl+ArrowUp",           "ctrl": true,  "shift": false, "alt": false, "code": "ArrowUp" },
     { "accel": "control+9",              "ctrl": true,  "shift": false, "alt": false, "code": "Digit9" },
     { "accel": "Shift+a",                "ctrl": false, "shift": true,  "alt": false, "code": "KeyA" },
-    { "accel": "Ctrl+Alt+f5",            "ctrl": true,  "shift": false, "alt": true,  "code": "F5" }
+    { "accel": "Ctrl+Alt+f5",            "ctrl": true,  "shift": false, "alt": true,  "code": "F5" },
+
+    { "accel": "GamepadLT",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadLT" },
+    { "accel": "GamepadRT",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadRT" },
+    { "accel": "GamepadA",               "ctrl": false, "shift": false, "alt": false, "code": "GamepadA" },
+    { "accel": "GamepadB",               "ctrl": false, "shift": false, "alt": false, "code": "GamepadB" },
+    { "accel": "GamepadX",               "ctrl": false, "shift": false, "alt": false, "code": "GamepadX" },
+    { "accel": "GamepadY",               "ctrl": false, "shift": false, "alt": false, "code": "GamepadY" },
+    { "accel": "GamepadLB",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadLB" },
+    { "accel": "GamepadRB",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadRB" },
+    { "accel": "GamepadLS",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadLS" },
+    { "accel": "GamepadRS",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadRS" },
+    { "accel": "GamepadBack",            "ctrl": false, "shift": false, "alt": false, "code": "GamepadBack" },
+    { "accel": "GamepadStart",           "ctrl": false, "shift": false, "alt": false, "code": "GamepadStart" },
+    { "accel": "GamepadDpadUp",          "ctrl": false, "shift": false, "alt": false, "code": "GamepadDpadUp" },
+    { "accel": "GamepadDpadDown",        "ctrl": false, "shift": false, "alt": false, "code": "GamepadDpadDown" },
+    { "accel": "GamepadDpadLeft",        "ctrl": false, "shift": false, "alt": false, "code": "GamepadDpadLeft" },
+    { "accel": "GamepadDpadRight",       "ctrl": false, "shift": false, "alt": false, "code": "GamepadDpadRight" },
+    { "accel": "gamepadlt",              "ctrl": false, "shift": false, "alt": false, "code": "GamepadLT" },
+    { "accel": "Ctrl+GamepadA",          "ctrl": true,  "shift": false, "alt": false, "code": "GamepadA" }
   ],
   "invalid": [
     "",
@@ -32,6 +51,11 @@
     "Ctrl+Numpad0",
     "Ctrl+NumpadEnter",
     "Mouse6",
-    "Ctrl"
+    "Ctrl",
+    "Gamepad",
+    "GamepadGuide",
+    "GamepadHome",
+    "Gamepad16",
+    "GamepadLT+GamepadRT"
   ]
 }

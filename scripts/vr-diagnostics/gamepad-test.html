@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Gamepad-test — holder Quest-controlleren?</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #02060c; color: #d8e2ef;
+         font: 18px/1.45 "Segoe UI", system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 24px; margin: 0 0 4px; font-weight: 600; }
+  p.sub { margin: 0 0 20px; color: #8aa0b8; font-size: 16px; }
+  #gate { display: grid; place-items: center; height: 160px; border-radius: 16px;
+          background: #0d1b2a; border: 3px solid #1f3a52; font-size: 26px;
+          font-weight: 600; cursor: pointer; user-select: none; }
+  #gate.armed { background: #14532d; border-color: #22c55e; }
+  #pads { margin: 20px 0; }
+  .pad { margin-bottom: 18px; padding: 14px; border-radius: 12px;
+         background: #0a1420; border: 1px solid #1f3a52; }
+  .pad h2 { font-size: 17px; margin: 0 0 8px; color: #7dd3fc; font-weight: 600; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .b { min-width: 54px; padding: 6px 8px; border-radius: 8px; text-align: center;
+       background: #13233a; border: 1px solid #24405c; font: 13px/1.2 monospace; }
+  .b.on { background: #15803d; border-color: #4ade80; color: #fff; }
+  .axes { font: 13px/1.6 monospace; color: #9fb4cc; }
+  #facts { margin: 18px 0; font-size: 20px; }
+  #facts b { color: #7dd3fc; }
+  #log { margin-top: 14px; max-height: 300px; overflow: auto;
+         font: 14px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre; }
+  .warn { color: #fbbf24; }
+  .ok { color: #4ade80; }
+  .dim { color: #64809c; }
+</style>
+
+<h1>Holder controlleren som gamepad?</h1>
+<p class="sub">Slå «Use controllers as gamepad» til i Virtual Desktop foerst.</p>
+
+<div id="gate">KLIK HER FOERST</div>
+
+<div id="facts">
+  gamepads: <b id="count">0</b> &nbsp;·&nbsp;
+  laengste hold: <b id="held">—</b> &nbsp;·&nbsp;
+  tryk registreret: <b id="presses">0</b>
+</div>
+
+<div id="pads"></div>
+<div id="log"></div>
+
+<script>
+  const log = document.getElementById("log");
+  const out = (msg, cls) => {
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = new Date().toISOString().slice(11, 23) + "  " + msg;
+    log.prepend(line);
+    while (log.childElementCount > 200) log.lastElementChild.remove();
+  };
+
+  // Chromium udleverer foerst gamepads efter en user gesture i siden.
+  // Vi ved fra maalingerne at VD leverer rene klik, saa et klik er nok.
+  // Bemaerk: i gamepad-tilstand holder controlleren maaske op med at vaere
+  // musemarkoer. Derfor tael ogsaa et tastetryk som gesture - tastaturet er
+  // der stadig via passthrough.
+  const gate = document.getElementById("gate");
+  let armed = false;
+  const arm = (how) => {
+    if (armed) return;
+    armed = true;
+    gate.classList.add("armed");
+    gate.textContent = "AKTIV — hold nu en knap i 3 sekunder";
+    out(`user gesture (${how}) modtaget — poller nu efter gamepads`, "ok");
+  };
+  gate.addEventListener("click", () => arm("klik"));
+  window.addEventListener("keydown", () => arm("tast"));
+
+  window.addEventListener("gamepadconnected", (e) =>
+    out(`gamepadconnected  index=${e.gamepad.index}  id="${e.gamepad.id}"  mapping=${e.gamepad.mapping || "(ingen)"}  knapper=${e.gamepad.buttons.length}  akser=${e.gamepad.axes.length}`, "ok"));
+  window.addEventListener("gamepaddisconnected", (e) =>
+    out(`gamepaddisconnected  index=${e.gamepad.index}`, "warn"));
+
+  const state = new Map();   // "padIndex:btnIndex" -> tidspunkt for tryk
+  let longest = 0, presses = 0;
+  const padsEl = document.getElementById("pads");
+
+  function render(pads) {
+    padsEl.textContent = "";
+    for (const gp of pads) {
+      if (!gp) continue;
+      const box = document.createElement("div");
+      box.className = "pad";
+      const h = document.createElement("h2");
+      h.textContent = `[${gp.index}] ${gp.id}  —  mapping: ${gp.mapping || "(ingen)"}`;
+      box.appendChild(h);
+
+      const row = document.createElement("div");
+      row.className = "btns";
+      gp.buttons.forEach((b, i) => {
+        const d = document.createElement("div");
+        d.className = "b" + (b.pressed ? " on" : "");
+        d.textContent = i + (b.value > 0 && b.value < 1 ? ` ${b.value.toFixed(2)}` : "");
+        row.appendChild(d);
+      });
+      box.appendChild(row);
+
+      const ax = document.createElement("div");
+      ax.className = "axes";
+      ax.textContent = "akser: " + gp.axes.map((a, i) => `${i}:${a.toFixed(2)}`).join("  ");
+      box.appendChild(ax);
+      padsEl.appendChild(box);
+    }
+  }
+
+  function tick() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const live = [...pads].filter(Boolean);
+    document.getElementById("count").textContent = live.length;
+    render(pads);
+
+    for (const gp of live) {
+      gp.buttons.forEach((b, i) => {
+        const key = `${gp.index}:${i}`;
+        const was = state.get(key);
+        if (b.pressed && was === undefined) {
+          state.set(key, performance.now());
+          out(`NED   pad ${gp.index} knap ${i}  (value ${b.value.toFixed(2)})`);
+        } else if (!b.pressed && was !== undefined) {
+          const ms = Math.round(performance.now() - was);
+          state.delete(key);
+          presses += 1;
+          document.getElementById("presses").textContent = presses;
+          if (ms > longest) {
+            longest = ms;
+            document.getElementById("held").textContent = ms + " ms";
+          }
+          const real = ms >= 1000;
+          out(`OP    pad ${gp.index} knap ${i}  efter ${ms} ms` +
+              (real ? "  — AEGTE HOLD" : "  — kun et tap"), real ? "ok" : "warn");
+        }
+      });
+    }
+    requestAnimationFrame(tick);
+  }
+
+  out("klar — klik paa fladen, slaa gamepad-tilstand til i VD, og hold saa en knap");
+  requestAnimationFrame(tick);
+</script>

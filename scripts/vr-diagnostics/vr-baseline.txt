@@ -1,0 +1,16 @@
+﻿=== NUVAERENDE TILSTAND (til gendannelse) — 2026-08-04 19:14 ===
+--- Standard lydenheder (Windows registry, DeviceState/Role) ---
+  [Capture] AKTIV: RODE NT-USB / Mikrofon
+  [Capture] AKTIV: Logitech PRO X Wireless Gaming Headset / Mikrofon
+  [Capture] AKTIV: Oculus Virtual Audio Device / Headset Microphone
+  [Render] AKTIV: High Definition Audio Device / Digitalt output
+  [Render] AKTIV: Logitech PRO X Wireless Gaming Headset / Højttalere
+  [Render] AKTIV: Oculus Virtual Audio Device / Hovedtelefoner
+  [Render] AKTIV: RODE NT-USB / Højttalere
+  [Render] AKTIV: NVIDIA High Definition Audio / ROG PG279Q
+--- Skaermoploesning ---
+  {X=0,Y=0,Width=2560,Height=1440}
+--- ClearType ---
+  FontSmoothing= Type= (2 = ClearType til)
+--- Talminal koerer? ---
+  JA: talminal-canvas, talminal-canvas

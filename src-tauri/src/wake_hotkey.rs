@@ -70,12 +70,51 @@ pub enum Trigger {
     },
     /// Mus: fast VK, ingen layout-involvering.
     Mouse { code: &'static str, vk: u16 },
+    /// XInput-gamepad. Hverken VK eller layout er involveret; tilstanden
+    /// kommer fra `XInputGetState`, ikke fra `GetAsyncKeyState`.
+    ///
+    /// `code` SKAL blive staaende som felt, selv om `input` naesten altid er
+    /// entydig: `collides` sammenligner trigger-identitet, og de to analoge
+    /// triggere baerer samme `PadInput`-diskriminant-data hvis man udelader
+    /// koden. Uden feltet ville LT-til-PTT og RT-til-diktering blive afvist
+    /// som "samme tast".
+    Gamepad {
+        code: &'static str,
+        input: PadInput,
+    },
 }
+
+/// Hvor paa pad'en knappen sidder. XInput deler tilstanden i to: 14 bit-flag i
+/// `wButtons`, og to ANALOGE triggere i separate `u8`-felter (0-255). En
+/// trigger er derfor en taerskel, ikke et bit-tjek.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PadInput {
+    /// Bit i `XINPUT_GAMEPAD.wButtons`.
+    Button(u16),
+    /// `bLeftTrigger` / `bRightTrigger`.
+    Trigger(PadSide),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PadSide {
+    Left,
+    Right,
+}
+
+/// Hvornaar en analog trigger taeller som nede — 0,4 af fuldt udslag.
+///
+/// Chromium meldte `pressed` allerede ved 0,25, og XInputs egen
+/// `XINPUT_GAMEPAD_TRIGGER_THRESHOLD` er 30/255 ≈ 0,12. Begge er for lette:
+/// et hvil af pegefingeren ville aabne mikrofonen. Maalt paa Quest-controlleren
+/// naaede almindelige tryk 0,94-1,00, saa der er rigelig luft over taersklen.
+pub const PAD_TRIGGER_THRESHOLD: u8 = 102;
 
 impl Trigger {
     pub fn code(&self) -> &'static str {
         match self {
-            Trigger::Key { code, .. } | Trigger::Mouse { code, .. } => code,
+            Trigger::Key { code, .. }
+            | Trigger::Mouse { code, .. }
+            | Trigger::Gamepad { code, .. } => code,
         }
     }
 }
@@ -149,7 +188,7 @@ pub fn parse_accelerator(accel: &str) -> Result<KeyCombo, String> {
     };
     if combo.is_bare() && !allows_bare(&trigger) {
         return Err(format!(
-            "{accel} kraever mindst een modifier — kun F1-F12 og musetaster maa staa alene"
+            "{accel} kraever mindst een modifier — kun F1-F12, musetaster og gamepad-knapper maa staa alene"
         ));
     }
     Ok(combo)
@@ -241,9 +280,42 @@ const MOUSE_TABLE: &[(&str, &str, u16)] = &[
     ("mouse5", "Mouse5", 0x06),
 ];
 
+/// De 16 input XInput faktisk kan rapportere: 14 bit-flag + 2 analoge triggere.
+///
+/// Bemaerk at Chromiums Gamepad API melder **17** knapper for den samme pad.
+/// Den 17. (index 16) er Guide/Home, som ligger paa bit 0x0400 og kun kan
+/// laeses via den udokumenterede `XInputGetStateEx` (ordinal 100). Den findes
+/// ikke i windows-sys, og en binding til den ville gemme sig lydloest og
+/// aldrig fyre — derfor staar den ikke her, og optageren afviser index 16.
+///
+/// Maskerne er skrevet ud i stedet for at importere `XINPUT_GAMEPAD_*`, saa
+/// tabellen ogsaa kompilerer uden for Windows. `masker_matcher_xinput` laaser
+/// dem mod de rigtige konstanter.
+const GAMEPAD_TABLE: &[(&str, &str, PadInput)] = &[
+    ("gamepada", "GamepadA", PadInput::Button(0x1000)),
+    ("gamepadb", "GamepadB", PadInput::Button(0x2000)),
+    ("gamepadx", "GamepadX", PadInput::Button(0x4000)),
+    ("gamepady", "GamepadY", PadInput::Button(0x8000)),
+    ("gamepadlb", "GamepadLB", PadInput::Button(0x0100)),
+    ("gamepadrb", "GamepadRB", PadInput::Button(0x0200)),
+    ("gamepadback", "GamepadBack", PadInput::Button(0x0020)),
+    ("gamepadstart", "GamepadStart", PadInput::Button(0x0010)),
+    ("gamepadls", "GamepadLS", PadInput::Button(0x0040)),
+    ("gamepadrs", "GamepadRS", PadInput::Button(0x0080)),
+    ("gamepaddpadup", "GamepadDpadUp", PadInput::Button(0x0001)),
+    ("gamepaddpaddown", "GamepadDpadDown", PadInput::Button(0x0002)),
+    ("gamepaddpadleft", "GamepadDpadLeft", PadInput::Button(0x0004)),
+    ("gamepaddpadright", "GamepadDpadRight", PadInput::Button(0x0008)),
+    ("gamepadlt", "GamepadLT", PadInput::Trigger(PadSide::Left)),
+    ("gamepadrt", "GamepadRT", PadInput::Trigger(PadSide::Right)),
+];
+
 fn token_to_trigger(token: &str) -> Option<Trigger> {
     if let Some(&(_, code, vk)) = MOUSE_TABLE.iter().find(|(t, ..)| *t == token) {
         return Some(Trigger::Mouse { code, vk });
+    }
+    if let Some(&(_, code, input)) = GAMEPAD_TABLE.iter().find(|(t, ..)| *t == token) {
+        return Some(Trigger::Gamepad { code, input });
     }
     CODE_TABLE
         .iter()
@@ -269,6 +341,9 @@ fn migrate_v1_token(token: &str) -> Option<String> {
 fn allows_bare(trigger: &Trigger) -> bool {
     match trigger {
         Trigger::Mouse { .. } => true,
+        // Der findes ingen modifiers paa en controller. Kraevede en gamepad-
+        // binding en, kunne den aldrig fyre.
+        Trigger::Gamepad { .. } => true,
         Trigger::Key { sc, extended, .. } => !extended && matches!(sc, 0x3B..=0x44 | 0x57 | 0x58),
     }
 }
@@ -298,19 +373,63 @@ pub struct TriggerVkCache {
     warned_layout: isize,
 }
 
+/// Hvad poll-loekken skal spoerge om for at afgoere "er triggeren nede?".
+///
+/// Formen er bevidst: opslaget (layout-afhaengigt, cachet) er skilt fra selve
+/// laesningen, saa Win32-kaldet bliver paa ET call-site i poll-loekken og
+/// cachen forbliver testbar med `FakeResolver` uden Win32 (Testbarhed-reglen,
+/// se `PollSnapshot`). Gjorde vi det her til et `is_trigger_down`, ville
+/// baade `GetAsyncKeyState` og `XInputGetState` vandre ind i cachen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TriggerProbe {
+    /// Laeses med `GetAsyncKeyState`. `0` = uoploeselig paa dette layout.
+    Vk(u16),
+    /// Laeses af den delte `PadState`.
+    Pad(PadInput),
+}
+
+/// Oejebliksbillede af pad'en — ren data, saa taerskel- og maske-logikken kan
+/// unit-testes uden en fysisk controller. Samme begrundelse som `PollSnapshot`.
+///
+/// `Default` er "intet nede, ikke tilsluttet", og DET er invarianten der
+/// forhindrer et haengende hold: en fejlende laesning skal rapportere alle
+/// knapper oppe med det samme, saa kant-detektoren ser en faldende kant og
+/// udsender sit `Release`. Backoff maa springe SCANNINGEN over, aldrig niveauet.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PadState {
+    pub buttons: u16,
+    pub left_trigger: u8,
+    pub right_trigger: u8,
+    pub connected: bool,
+}
+
+impl PadState {
+    pub fn is_down(&self, input: PadInput) -> bool {
+        if !self.connected {
+            return false;
+        }
+        match input {
+            PadInput::Button(mask) => (self.buttons & mask) != 0,
+            PadInput::Trigger(PadSide::Left) => self.left_trigger >= PAD_TRIGGER_THRESHOLD,
+            PadInput::Trigger(PadSide::Right) => self.right_trigger >= PAD_TRIGGER_THRESHOLD,
+        }
+    }
+}
+
 impl TriggerVkCache {
-    pub fn vk_for(
+    pub fn probe_for(
         &mut self,
         trigger: &Trigger,
         resolver: &dyn VkResolver,
-    ) -> (u16, Option<String>) {
+    ) -> (TriggerProbe, Option<String>) {
         let (code, sc, extended) = match trigger {
-            Trigger::Mouse { vk, .. } => return (*vk, None),
+            Trigger::Mouse { vk, .. } => return (TriggerProbe::Vk(*vk), None),
+            Trigger::Gamepad { input, .. } => return (TriggerProbe::Pad(*input), None),
             Trigger::Key { code, sc, extended } => (*code, *sc, *extended),
         };
         let layout = resolver.layout();
         if self.resolved && layout == self.layout {
-            return (self.vk, None);
+            return (TriggerProbe::Vk(self.vk), None);
         }
         self.layout = layout;
         let vk = resolver.resolve(sc, extended, layout);
@@ -323,11 +442,11 @@ impl TriggerVkCache {
             } else {
                 None
             };
-            return (self.vk, warning);
+            return (TriggerProbe::Vk(self.vk), warning);
         }
         self.vk = vk;
         self.resolved = true;
-        (vk, None)
+        (TriggerProbe::Vk(vk), None)
     }
 }
 
@@ -606,6 +725,60 @@ fn is_vk_down(vk: u16) -> bool {
     (unsafe { GetAsyncKeyState(i32::from(vk)) } as u16 & 0x8000) != 0
 }
 
+/// Hvor mange polls der springes over efter en mislykket pad-scanning.
+/// 20 × 5 ms = 100 ms, hvilket er den oevre graense for hvor sent et foerste
+/// tryk kan blive set efter at controlleren har sovet. PTT er et HOLD — man
+/// trykker og taler bagefter — saa 100 ms er umaerkeligt, mens det skaerer
+/// enhedsopdagelsen fra 200 til 10 opslag i sekundet.
+#[cfg(windows)]
+const PAD_RESCAN_POLLS: u32 = 20;
+
+#[cfg(windows)]
+fn read_pad_state(index: u32) -> PadState {
+    use windows_sys::Win32::UI::Input::XboxController::{XInputGetState, XINPUT_STATE};
+    let mut state: XINPUT_STATE = unsafe { std::mem::zeroed() };
+    // ERROR_SUCCESS == 0. Alt andet (i praksis ERROR_DEVICE_NOT_CONNECTED)
+    // giver `default()` = intet nede — se invarianten paa `PadState`.
+    if unsafe { XInputGetState(index, &mut state) } != 0 {
+        return PadState::default();
+    }
+    PadState {
+        buttons: state.Gamepad.wButtons,
+        left_trigger: state.Gamepad.bLeftTrigger,
+        right_trigger: state.Gamepad.bRightTrigger,
+        connected: true,
+    }
+}
+
+/// Laeser slot 0 med backoff naar der ingen pad er. Virtual Desktop leverer
+/// én emuleret pad, saa slot 1-3 spoerges aldrig.
+#[cfg(windows)]
+#[derive(Default)]
+struct PadReader {
+    skip_polls: u32,
+}
+
+#[cfg(windows)]
+impl PadReader {
+    /// `needed` er falsk naar ingen slot har en gamepad-binding — da kaldes
+    /// XInput ALDRIG, og brugere uden controller betaler intet.
+    fn read(&mut self, needed: bool) -> PadState {
+        if !needed {
+            self.skip_polls = 0;
+            return PadState::default();
+        }
+        if self.skip_polls > 0 {
+            self.skip_polls -= 1;
+            return PadState::default();
+        }
+        let state = read_pad_state(0);
+        if !state.connected {
+            self.skip_polls = PAD_RESCAN_POLLS;
+        }
+        state
+    }
+}
+
 /// Niveau-baseret fokus: er canvas forgrundsvinduet LIGE NU? Laeses friskt
 /// pr. poll ligesom tasterne — et tabt/omrokeret Focused-event kan aldrig
 /// wedge gaten (naeste poll laeser bare sandheden). GetForegroundWindow
@@ -691,6 +864,7 @@ pub fn spawn_wake_poller(app: AppHandle) {
             }
             let mut detectors: [ComboEdgeDetector; SLOT_COUNT] = Default::default();
             let mut vk_caches: [TriggerVkCache; SLOT_COUNT] = Default::default();
+            let mut pad_reader = PadReader::default();
             let mut seen_versions =
                 HotkeySlot::ALL.map(|slot| COMBO_VERSIONS[slot.index()].load(Ordering::Acquire));
             loop {
@@ -718,16 +892,29 @@ pub fn spawn_wake_poller(app: AppHandle) {
                     continue;
                 }
                 let shared = read_shared_snapshot();
+                // Pad'en laeses EEN gang pr. poll og deles mellem slots, af
+                // samme grund som modifiers deles (se `read_shared_snapshot`):
+                // to slots kan ikke give to forskellige svar om den samme
+                // fysiske controller.
+                let needs_pad = combos
+                    .iter()
+                    .flatten()
+                    .any(|c| matches!(c.trigger, Trigger::Gamepad { .. }));
+                let pad = pad_reader.read(needs_pad);
                 for slot in HotkeySlot::ALL {
                     let i = slot.index();
                     let Some(combo) = combos[i] else { continue };
-                    let (trigger_vk, warning) = vk_caches[i].vk_for(&combo.trigger, &Win32Resolver);
+                    let (probe, warning) = vk_caches[i].probe_for(&combo.trigger, &Win32Resolver);
                     if let Some(warning) = warning {
                         let named = format!("{}: {warning}", slot.label());
                         eprintln!("[wake-hotkey/{}] {warning}", slot.wire_name());
                         publish_layout_warning(named);
                     }
-                    let snapshot = shared.with_trigger(trigger_vk != 0 && is_vk_down(trigger_vk));
+                    let trigger_down = match probe {
+                        TriggerProbe::Vk(vk) => vk != 0 && is_vk_down(vk),
+                        TriggerProbe::Pad(input) => pad.is_down(input),
+                    };
+                    let snapshot = shared.with_trigger(trigger_down);
                     match detectors[i].step(&combo, &snapshot) {
                         Step::Press => {
                             crate::perf_mark_background!(
@@ -912,7 +1099,9 @@ mod tests {
                 } => {
                     assert_eq!((got_sc, got_ext), (*sc, *extended), "{accel}")
                 }
-                Trigger::Mouse { .. } => panic!("{accel} burde vaere en tast"),
+                Trigger::Mouse { .. } | Trigger::Gamepad { .. } => {
+                    panic!("{accel} burde vaere en tast")
+                }
             }
         }
         let mut seen = std::collections::HashSet::new();
@@ -950,10 +1139,10 @@ mod tests {
         };
         let trigger = parse_accelerator("Ctrl+Semicolon").unwrap().trigger;
         let mut cache = TriggerVkCache::default();
-        assert_eq!(cache.vk_for(&trigger, &r).0, 0xBA);
+        assert_eq!(cache.probe_for(&trigger, &r).0, TriggerProbe::Vk(0xBA));
         r.layout.set(2);
         r.map.borrow_mut().insert((0x27, false), 0xC0);
-        assert_eq!(cache.vk_for(&trigger, &r).0, 0xC0);
+        assert_eq!(cache.probe_for(&trigger, &r).0, TriggerProbe::Vk(0xC0));
     }
 
     #[test]
@@ -964,13 +1153,13 @@ mod tests {
         };
         let trigger = parse_accelerator("Ctrl+IntlBackslash").unwrap().trigger;
         let mut cache = TriggerVkCache::default();
-        assert_eq!(cache.vk_for(&trigger, &r).0, 0xE2);
+        assert_eq!(cache.probe_for(&trigger, &r).0, TriggerProbe::Vk(0xE2));
         r.layout.set(2);
         r.map.borrow_mut().clear();
-        let (vk, warning) = cache.vk_for(&trigger, &r);
-        assert_eq!(vk, 0xE2);
+        let (probe, warning) = cache.probe_for(&trigger, &r);
+        assert_eq!(probe, TriggerProbe::Vk(0xE2));
         assert!(warning.expect("advarsel").contains("IntlBackslash"));
-        assert_eq!(cache.vk_for(&trigger, &r).1, None);
+        assert_eq!(cache.probe_for(&trigger, &r).1, None);
     }
 
     #[test]
@@ -981,7 +1170,134 @@ mod tests {
         };
         let trigger = parse_accelerator("Mouse4").unwrap().trigger;
         let mut cache = TriggerVkCache::default();
-        assert_eq!(cache.vk_for(&trigger, &r), (0x05, None));
+        assert_eq!(cache.probe_for(&trigger, &r), (TriggerProbe::Vk(0x05), None));
+    }
+
+    /// Gamepad'en maa aldrig roere layout-oploesningen: `FakeResolver` her har
+    /// et TOMT kort, saa ethvert opslag ville give VK 0 og en advarsel.
+    #[test]
+    fn vk_cache_springer_oploesning_over_for_gamepad() {
+        let r = FakeResolver {
+            layout: std::cell::Cell::new(1),
+            map: std::cell::RefCell::new(std::collections::HashMap::new()),
+        };
+        let trigger = parse_accelerator("GamepadLT").unwrap().trigger;
+        let mut cache = TriggerVkCache::default();
+        assert_eq!(
+            cache.probe_for(&trigger, &r),
+            (TriggerProbe::Pad(PadInput::Trigger(PadSide::Left)), None)
+        );
+    }
+
+    #[test]
+    fn gamepad_bindinger_maa_staa_bare() {
+        assert!(parse_accelerator("GamepadLT").unwrap().is_bare());
+        assert!(parse_accelerator("GamepadA").unwrap().is_bare());
+        assert!(parse_accelerator("Ctrl+GamepadLT").is_ok());
+    }
+
+    /// De to analoge triggere baerer samme slags `PadInput` og ville kollidere
+    /// hvis `code` ikke var et felt paa varianten — og saa kunne LT og RT ikke
+    /// sidde i hver sin slot.
+    #[test]
+    fn lt_og_rt_kolliderer_ikke() {
+        let lt = parse_accelerator("GamepadLT").unwrap();
+        let rt = parse_accelerator("GamepadRT").unwrap();
+        assert!(!collides(&lt, &rt));
+        assert!(collides(&lt, &parse_accelerator("GamepadLT").unwrap()));
+    }
+
+    #[test]
+    fn gamepad_tabellen_er_entydig() {
+        let mut codes = std::collections::HashSet::new();
+        let mut inputs = std::collections::HashSet::new();
+        for (token, code, input) in GAMEPAD_TABLE {
+            assert!(codes.insert(*code), "dublet code {code}");
+            let key = format!("{input:?}");
+            assert!(inputs.insert(key), "dublet input for {code}");
+            assert_eq!(*token, code.to_lowercase(), "token/code i utakt: {code}");
+        }
+        assert_eq!(GAMEPAD_TABLE.len(), 16, "14 bit-flag + 2 analoge triggere");
+    }
+
+    /// Maskerne er skrevet ud i haanden for at holde tabellen platform-fri.
+    /// Denne test er prisen for det: den laaser dem mod windows-sys' egne
+    /// konstanter, saa en tastefejl i et hex-tal ikke bliver en binding der
+    /// tavst fyrer paa den forkerte knap.
+    #[cfg(windows)]
+    #[test]
+    fn masker_matcher_xinput() {
+        use windows_sys::Win32::UI::Input::XboxController::*;
+        let expected: &[(&str, u16)] = &[
+            ("GamepadA", XINPUT_GAMEPAD_A),
+            ("GamepadB", XINPUT_GAMEPAD_B),
+            ("GamepadX", XINPUT_GAMEPAD_X),
+            ("GamepadY", XINPUT_GAMEPAD_Y),
+            ("GamepadLB", XINPUT_GAMEPAD_LEFT_SHOULDER),
+            ("GamepadRB", XINPUT_GAMEPAD_RIGHT_SHOULDER),
+            ("GamepadBack", XINPUT_GAMEPAD_BACK),
+            ("GamepadStart", XINPUT_GAMEPAD_START),
+            ("GamepadLS", XINPUT_GAMEPAD_LEFT_THUMB),
+            ("GamepadRS", XINPUT_GAMEPAD_RIGHT_THUMB),
+            ("GamepadDpadUp", XINPUT_GAMEPAD_DPAD_UP),
+            ("GamepadDpadDown", XINPUT_GAMEPAD_DPAD_DOWN),
+            ("GamepadDpadLeft", XINPUT_GAMEPAD_DPAD_LEFT),
+            ("GamepadDpadRight", XINPUT_GAMEPAD_DPAD_RIGHT),
+        ];
+        for (code, mask) in expected {
+            let found = GAMEPAD_TABLE
+                .iter()
+                .find(|(_, c, _)| c == code)
+                .unwrap_or_else(|| panic!("{code} mangler i GAMEPAD_TABLE"));
+            assert_eq!(found.2, PadInput::Button(*mask), "maske for {code}");
+        }
+    }
+
+    /// Taerskel-logikken, testet uden en fysisk controller — hele pointen med
+    /// at `PadState` er ren data.
+    #[test]
+    fn pad_taerskel_og_maske() {
+        let mut pad = PadState {
+            buttons: 0x1000,
+            left_trigger: PAD_TRIGGER_THRESHOLD,
+            right_trigger: PAD_TRIGGER_THRESHOLD - 1,
+            connected: true,
+        };
+        assert!(pad.is_down(PadInput::Button(0x1000)));
+        assert!(!pad.is_down(PadInput::Button(0x2000)));
+        assert!(pad.is_down(PadInput::Trigger(PadSide::Left)));
+        assert!(!pad.is_down(PadInput::Trigger(PadSide::Right)));
+
+        // Chromium meldte `pressed` ved 0,25 — for let til at aabne en mikrofon.
+        pad.left_trigger = (0.25 * 255.0) as u8;
+        assert!(!pad.is_down(PadInput::Trigger(PadSide::Left)));
+
+        // Frakoblet = alt oppe, uanset hvad felterne staar paa. Det er
+        // invarianten der forhindrer et haengende hold.
+        pad.connected = false;
+        pad.left_trigger = 255;
+        pad.buttons = 0xFFFF;
+        assert!(!pad.is_down(PadInput::Trigger(PadSide::Left)));
+        assert!(!pad.is_down(PadInput::Button(0x1000)));
+    }
+
+    /// En frakoblet pad midt i et hold skal give et RELEASE, ikke stilhed.
+    #[test]
+    fn frakoblet_pad_midt_i_hold_slipper() {
+        let combo = parse_accelerator("GamepadLT").unwrap();
+        let mut detector = ComboEdgeDetector::default();
+        let base = PollSnapshot {
+            window_focused: true,
+            ..PollSnapshot::default()
+        };
+        // Slip den indledende suppress_until_keyup-gate.
+        assert_eq!(detector.step(&combo, &base.with_trigger(false)), Step::None);
+        assert_eq!(detector.step(&combo, &base.with_trigger(true)), Step::Press);
+        // Pad'en forsvinder: laesningen rapporterer alt oppe.
+        assert_eq!(
+            detector.step(&combo, &base.with_trigger(false)),
+            Step::Release
+        );
     }
 
     #[test]

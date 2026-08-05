@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pointer-test — hold med Quest-controlleren</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #02060c; color: #d8e2ef;
+         font: 20px/1.4 "Segoe UI", system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 24px; margin: 0 0 16px; font-weight: 600; }
+  #pad { height: 260px; border-radius: 16px; display: grid; place-items: center;
+         background: #0d1b2a; border: 3px solid #1f3a52; user-select: none;
+         touch-action: none; font-size: 32px; font-weight: 600; cursor: pointer; }
+  #pad.down { background: #14532d; border-color: #22c55e; }
+  #facts { margin: 20px 0; font-size: 22px; }
+  #facts b { color: #7dd3fc; }
+  #log { margin-top: 16px; max-height: 260px; overflow: auto;
+         font: 15px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre; }
+  .warn { color: #fbbf24; }
+  .ok { color: #4ade80; }
+</style>
+
+<h1>Hold fladen nede med controlleren — slip igen</h1>
+
+<div id="pad">HOLD MIG</div>
+
+<div id="facts">
+  pointerType: <b id="ptype">—</b> &nbsp;·&nbsp;
+  længste hold: <b id="held">—</b> &nbsp;·&nbsp;
+  parrede ned/op: <b id="pairs">0</b> &nbsp;·&nbsp;
+  cancels: <b id="cancels">0</b>
+</div>
+
+<div id="log"></div>
+
+<script>
+  const pad = document.getElementById("pad");
+  const log = document.getElementById("log");
+  const out = (msg, cls) => {
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = new Date().toISOString().slice(11, 23) + "  " + msg;
+    log.prepend(line);
+  };
+
+  let downAt = null, longest = 0, pairs = 0, cancels = 0;
+
+  pad.addEventListener("pointerdown", (e) => {
+    // Pointer capture: uden den mister vi 'up' hvis pointeren glider ud af fladen
+    // mens der holdes — praecis det der sker naar man sigter med en controller.
+    pad.setPointerCapture(e.pointerId);
+    pad.classList.add("down");
+    downAt = performance.now();
+    document.getElementById("ptype").textContent =
+      e.pointerType + (e.isPrimary ? " (primary)" : "") + ", button " + e.button;
+    out(`pointerdown  type=${e.pointerType} button=${e.button} id=${e.pointerId} pressure=${e.pressure}`);
+  });
+
+  const release = (e, kind) => {
+    if (downAt === null) { out(`${kind} UDEN forudgaaende down — uparret!`, "warn"); return; }
+    const ms = Math.round(performance.now() - downAt);
+    downAt = null;
+    pad.classList.remove("down");
+    if (ms > longest) {
+      longest = ms;
+      document.getElementById("held").textContent = ms + " ms";
+    }
+    if (kind === "pointerup") {
+      pairs += 1;
+      document.getElementById("pairs").textContent = pairs;
+    }
+    const verdict = ms >= 1000 ? " — AEGTE HOLD" : " — kun et tap";
+    out(`${kind}  efter ${ms} ms${verdict}`, ms >= 1000 ? "ok" : "warn");
+  };
+
+  pad.addEventListener("pointerup", (e) => release(e, "pointerup"));
+  pad.addEventListener("pointercancel", (e) => {
+    cancels += 1;
+    document.getElementById("cancels").textContent = cancels;
+    release(e, "pointercancel");
+  });
+  pad.addEventListener("lostpointercapture", () => out("lostpointercapture"));
+
+  // Til sammenligning: ser DOM'en overhovedet museknapper 4/5?
+  window.addEventListener("mousedown", (e) => {
+    if (e.button >= 3) out(`mousedown button=${e.button} (Mouse${e.button + 1}) — musetast SES`, "ok");
+  });
+  window.addEventListener("keydown", (e) => {
+    if (!e.repeat) out(`keydown ${e.code}`);
+  });
+
+  out("klar — hold fladen nede i ca. 3 sekunder, slip, og gentag et par gange");
+</script>
