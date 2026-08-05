@@ -132,8 +132,28 @@ begge tavse mens den optager en ny binding. At to genveje ikke må dele trigger-
 håndhæves af `wake_hotkey::collides` og er **ikke** en lighedstest: combo-matchet er
 subset, så ét `Ctrl+Shift+Space`-tryk fyrer også en genvej bundet til `Ctrl+Space`.
 
-Kun én af de to må holde mikrofonen ad gangen. Ejerskabet følger holdet — ikke pipelinens
-tilstand, som er `speaking` længe efter tasten er sluppet — og gaten sidder i `App.tsx`.
+**Hver slot har to bindinger**, en primær og en valgfri alternativ, og begge er aktive
+samtidig. Det findes fordi den samme funktion bruges to fysiske steder — en musetast ved
+skrivebordet, en controller-trigger i headsettet — og alternativet ville være at skifte
+binding i indstillingerne hver gang. Der er derfor op til fire genveje og **seks** par at
+kollisionstjekke: to inden for hver slot og fire på tværs.
+
+Ingen detektion af hvilket sted brugeren er: en gamepad-binding kan ikke fyre når der ingen
+pad er (`PadReader` returnerer `PadState::default()`), og fokus-gaten sikrer at en anden
+apps controller-tryk aldrig når Talminal. Bindingen deaktiverer altså sig selv.
+
+`SlotArbiter` voldgifter mellem en slots to bindinger: den der startede holdet ejer det til
+den slippes, og kun ejeren kan lukke det. Uden den lås ville to samtidige tryk give to
+`press` for én mikrofon. Typen ligger bevidst i den rene del af `wake_hotkey.rs` og ikke i
+poller-tråden — ellers kunne den vigtigste logik i modulet ikke testes. Mister den
+ejerskabet (bindings-skift eller suspension midt i et hold), **skal** den udsende et
+syntetisk `release`: uden det står mikrofonen åben og slotten er permanent låst, fordi
+`reset()` sætter `suppress_until_keyup` og ejerens detektor derfor aldrig selv når at melde
+slip. Den samme ejerskabsregel findes i `hotkeyBridge.ts` for DOM-vejen.
+
+Kun én af de to *slots* må holde mikrofonen ad gangen. Ejerskabet følger holdet — ikke
+pipelinens tilstand, som er `speaking` længe efter tasten er sluppet — og gaten sidder i
+`App.tsx`.
 
 **Ruterne bor ét sted — men navnene gør ikke.** `providers.rs` er den eneste kilde til
 endpoints og modelnavne: `STT_ROUTES` (2 ruter — samme udbyder og samme realtime-session,

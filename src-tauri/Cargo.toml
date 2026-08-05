@@ -126,6 +126,11 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
+    # PTT fra en VR-controller: Virtual Desktop praesenterer Quest-controllerne
+    # som en XInput-pad, og et HOLD overlever kun ad den vej (musetast-vejen
+    # kollapser 3 sekunders hold til ~70 ms). Featuren traekker selv
+    # Win32_UI_Input ind og findes i den pinnede 0.59 — ingen versions-flytning.
+    "Win32_UI_Input_XboxController",
     "Win32_UI_WindowsAndMessaging",
 ] }
 # Mikrofon-permission for appens EGET webview (webview_permissions.rs).

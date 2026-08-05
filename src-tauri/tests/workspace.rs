@@ -88,6 +88,11 @@ fn settings_input(
         // eksisterende kaldere bevarer signaturen. De tests der handler OM
         // dikteringen saetter dem selv paa den returnerede struct.
         dictation_hotkey: workspace::DEFAULT_DICTATION_HOTKEY.to_string(),
+        // Alt-bindingerne er valgfrie og staar tomme her, saa de eksisterende
+        // kaldere bevarer signaturen. De tests der handler OM dem saetter dem
+        // paa den returnerede struct.
+        ptt_hotkey_alt: None,
+        dictation_hotkey_alt: None,
         dictation_submit: false,
     }
 }
@@ -1193,8 +1198,52 @@ fn settings_input_rejects_a_missing_field() {
     );
 
     // Kontrolproeve: med ALLE felter parser den.
+    //
+    // BEMAERK at de to alt-felter bevidst IKKE staar her. De er de eneste med
+    // en felt-default paa skrive-siden, saa "komplet" betyder stadig de ni
+    // paakraevede — og de to json'er ovenfor mangler stadig praecis ét
+    // paakraevet felt hver. Testen bestaar altsaa fortsat af den rigtige grund.
     let komplet = r#"{"ptt_hotkey":"CmdOrCtrl+Shift+Space","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
     serde_json::from_str::<SettingsInput>(komplet).expect("komplet wire-form skal parse");
+}
+
+#[test]
+fn settings_input_accepterer_alt_felterne_udeladt() {
+    // Wire-kompatibilitet begge veje: en frontend-build der ikke kender
+    // alt-felterne skal stadig kunne gemme. `deny_unknown_fields` afviser
+    // UKENDTE noegler, ikke manglende — felt-defaulten er forenelig med den.
+    let uden_alt = r#"{"ptt_hotkey":"Mouse4","exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_submit":false}"#;
+    let parsed =
+        serde_json::from_str::<SettingsInput>(uden_alt).expect("udeladte alt-felter skal parse");
+    assert_eq!(parsed.ptt_hotkey_alt, None);
+    assert_eq!(parsed.dictation_hotkey_alt, None);
+
+    // Og null skal betyde det samme som udeladt.
+    let med_null = r#"{"ptt_hotkey":"Mouse4","ptt_hotkey_alt":null,"exit_type_mode_hotkey":"Shift+Escape","voice_engine":"pipeline","wallpaper":"blue-folds","default_agent":"claude","stt_provider":"openai","routing_provider":"vercel","dictation_hotkey":"CmdOrCtrl+Shift+KeyD","dictation_hotkey_alt":null,"dictation_submit":false}"#;
+    let parsed =
+        serde_json::from_str::<SettingsInput>(med_null).expect("null i alt-felterne skal parse");
+    assert_eq!(parsed.ptt_hotkey_alt, None);
+}
+
+#[test]
+fn gammel_settings_json_uden_alt_felter_faar_none() {
+    let legacy: Settings =
+        serde_json::from_str(r#"{"ptt_hotkey":"Ctrl+F12","exit_type_mode_hotkey":"Shift+Escape"}"#)
+            .expect("legacy settings deserialize");
+    assert_eq!(legacy.ptt_hotkey_alt, None);
+    assert_eq!(legacy.dictation_hotkey_alt, None);
+}
+
+#[test]
+fn en_none_alt_binding_skrives_ikke_til_disken() {
+    // `skip_serializing_if`: uden den ville ALLE brugere faa
+    // `"ptt_hotkey_alt": null` skrevet ind i deres settings.json ved naeste
+    // gem, for et felt de aldrig har roert.
+    let json = serde_json::to_string(&Settings::default()).expect("serialize");
+    assert!(
+        !json.contains("ptt_hotkey_alt"),
+        "en tom alt-binding skal ikke fylde i filen: {json}"
+    );
 }
 
 #[test]
@@ -1263,6 +1312,62 @@ fn worker_set_settings_afviser_kolliderende_genveje() {
     subset.dictation_hotkey = "CmdOrCtrl+Shift+Space".to_string();
     let error = workspace::set_settings(subset).expect_err("subset-kollision skal afvises");
     assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Med to bindinger pr. slot er der SEKS par, ikke ét. De fem nye skal
+    // afvises lige saa haardt som det oprindelige — ellers kan brugeren smugle
+    // en kollision ind gennem et alt-felt.
+
+    // Inden for stemme-slotten.
+    let mut ptt_intern =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    ptt_intern.ptt_hotkey_alt = Some("Mouse4".to_string());
+    let error =
+        workspace::set_settings(ptt_intern).expect_err("samme tast i begge ptt-felter afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Inden for dikterings-slotten.
+    let mut dikt_intern =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    dikt_intern.dictation_hotkey = "GamepadLT".to_string();
+    dikt_intern.dictation_hotkey_alt = Some("GamepadLT".to_string());
+    let error =
+        workspace::set_settings(dikt_intern).expect_err("samme tast i begge dikt-felter afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Paa tvaers via ALT-felterne — den kollision der ikke fandtes foer.
+    let mut alt_mod_alt =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    alt_mod_alt.ptt_hotkey_alt = Some("GamepadLT".to_string());
+    alt_mod_alt.dictation_hotkey = "Mouse5".to_string();
+    alt_mod_alt.dictation_hotkey_alt = Some("GamepadLT".to_string());
+    let error =
+        workspace::set_settings(alt_mod_alt).expect_err("to alt-bindinger paa samme tast afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Paa tvaers: ptt-alt mod dikterings-PRIMAER.
+    let mut alt_mod_primaer =
+        settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    alt_mod_primaer.ptt_hotkey_alt = Some("GamepadLT".to_string());
+    alt_mod_primaer.dictation_hotkey = "GamepadLT".to_string();
+    let error = workspace::set_settings(alt_mod_primaer)
+        .expect_err("ptt-alt mod dikterings-primaer afvises");
+    assert!(error.contains("samme tast"), "uventet fejltekst: {error}");
+
+    // Kontrolproeve for alt-felterne: fire FORSKELLIGE taster gemmes fint.
+    let mut fire_ok = settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    fire_ok.ptt_hotkey_alt = Some("GamepadLT".to_string());
+    fire_ok.dictation_hotkey = "Mouse5".to_string();
+    fire_ok.dictation_hotkey_alt = Some("GamepadRT".to_string());
+    workspace::set_settings(fire_ok).expect("fire forskellige taster skal gemmes");
+    let stored = workspace::load_settings();
+    assert_eq!(stored.ptt_hotkey_alt.as_deref(), Some("GamepadLT"));
+    assert_eq!(stored.dictation_hotkey_alt.as_deref(), Some("GamepadRT"));
+
+    // Tom streng er RYD, ikke en parse-fejl.
+    let mut ryddet = settings_input("Mouse4", "Shift+Escape", "pipeline", "blue-folds", "claude");
+    ryddet.ptt_hotkey_alt = Some("   ".to_string());
+    workspace::set_settings(ryddet).expect("whitespace i alt-feltet er en ryd");
+    assert_eq!(workspace::load_settings().ptt_hotkey_alt, None);
 
     // Kontrolproeve: forskellige trigger-taster gemmes fint.
     let mut ok = settings_input(

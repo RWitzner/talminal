@@ -1605,17 +1605,22 @@ fn read_context_snapshots() -> Vec<context_hud::ContextSnapshot> {
 /// grammatik som ptt.ts). Polleren emitter "wake-hotkey"-eventet og er den
 /// PRIMAERE wake-kilde; DOM-handleren i ptt.ts bestaar som suppression +
 /// fallback. Se wake_hotkey.rs' modul-doc for hele rationalet.
+///
+/// `alt` er den valgfri ANDEN binding til samme funktion (mus ved
+/// skrivebordet, controller i headsettet). Begge sendes i ét kald, saa
+/// polleren kun nulstiller én gang pr. brugerhandling — se
+/// `wake_hotkey::set_accelerators`.
 #[tauri::command]
-fn configure_wake_hotkey(accel: String) -> Result<(), String> {
-    wake_hotkey::set_accelerator(wake_hotkey::HotkeySlot::Ptt, &accel)
+fn configure_wake_hotkey(accel: String, alt: Option<String>) -> Result<(), String> {
+    wake_hotkey::set_accelerators(wake_hotkey::HotkeySlot::Ptt, &accel, alt.as_deref())
 }
 
 /// Dikterings-genvejen. Egen kommando frem for en slot-parameter paa
 /// `configure_wake_hotkey`: wiren for PTT'en forbliver dermed uaendret, og de
 /// to kald kan sendes uafhaengigt naar kun den ene genvej er skiftet.
 #[tauri::command]
-fn configure_dictation_hotkey(accel: String) -> Result<(), String> {
-    wake_hotkey::set_accelerator(wake_hotkey::HotkeySlot::Dictation, &accel)
+fn configure_dictation_hotkey(accel: String, alt: Option<String>) -> Result<(), String> {
+    wake_hotkey::set_accelerators(wake_hotkey::HotkeySlot::Dictation, &accel, alt.as_deref())
 }
 
 #[tauri::command]

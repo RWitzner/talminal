@@ -13,6 +13,25 @@ const FALLBACK: Record<string, string> = {
   Mouse3: "Mouse 3 (midter)",
   Mouse4: "Mouse 4 (tilbage)",
   Mouse5: "Mouse 5 (frem)",
+  // Gamepad SKAL staa her. Uden en post falder `codeLabel` igennem til
+  // `navigator.keyboard.getLayoutMap()`, som intet ved om controllere, og
+  // brugeren ville se det raa token "GamepadLT" i tastekappen.
+  GamepadA: "Gamepad A",
+  GamepadB: "Gamepad B",
+  GamepadX: "Gamepad X",
+  GamepadY: "Gamepad Y",
+  GamepadLB: "Venstre skulder",
+  GamepadRB: "Højre skulder",
+  GamepadLT: "Venstre trigger",
+  GamepadRT: "Højre trigger",
+  GamepadLS: "Venstre stick-klik",
+  GamepadRS: "Højre stick-klik",
+  GamepadBack: "Gamepad Back",
+  GamepadStart: "Gamepad Start",
+  GamepadDpadUp: "D-pad ↑",
+  GamepadDpadDown: "D-pad ↓",
+  GamepadDpadLeft: "D-pad ←",
+  GamepadDpadRight: "D-pad →",
 };
 
 async function codeLabel(code: string): Promise<string> {

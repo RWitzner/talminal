@@ -29,6 +29,42 @@ type ParsedAccelerator = {
 
 const MOUSE_CODES = ["Mouse1", "Mouse2", "Mouse3", "Mouse4", "Mouse5"];
 
+/**
+ * XInput-gamepad. Spejler `GAMEPAD_TABLE` i wake_hotkey.rs — 14 bit-flag plus
+ * de to analoge triggere.
+ *
+ * Ingen af dem har et DOM-modstykke: tilstanden laeses af Rust-polleren via
+ * `XInputGetState`, ikke af nogen lytter her. Frontenden skal derfor kunne
+ * PARSE og VISE dem, men aldrig forsoege at matche dem mod et event — se
+ * `isKeyboardBinding` og `matchesAccelerator` nedenfor.
+ *
+ * Chromiums Gamepad API melder 17 knapper for den samme pad; den 17. er
+ * Guide/Home, som XInput ikke udleverer. Den staar derfor ikke her.
+ */
+const GAMEPAD_CODES = [
+  "GamepadA",
+  "GamepadB",
+  "GamepadX",
+  "GamepadY",
+  "GamepadLB",
+  "GamepadRB",
+  "GamepadBack",
+  "GamepadStart",
+  "GamepadLS",
+  "GamepadRS",
+  "GamepadDpadUp",
+  "GamepadDpadDown",
+  "GamepadDpadLeft",
+  "GamepadDpadRight",
+  "GamepadLT",
+  "GamepadRT",
+];
+
+/** Bindinger uden DOM-modstykke: de laeses kun af Rust-polleren. */
+function isNativeOnlyCode(code: string): boolean {
+  return MOUSE_CODES.includes(code) || GAMEPAD_CODES.includes(code);
+}
+
 const KEY_CODES = [
   ...Array.from({ length: 26 }, (_, i) => `Key${String.fromCharCode(65 + i)}`),
   ...Array.from({ length: 10 }, (_, i) => `Digit${i}`),
@@ -42,11 +78,17 @@ const KEY_CODES = [
 ];
 
 const CODE_BY_LOWER = new Map(
-  [...KEY_CODES, ...MOUSE_CODES].map((code) => [code.toLowerCase(), code]),
+  [...KEY_CODES, ...MOUSE_CODES, ...GAMEPAD_CODES].map((code) => [
+    code.toLowerCase(),
+    code,
+  ]),
 );
 
 function allowsBare(code: string): boolean {
-  return MOUSE_CODES.includes(code) || /^F([1-9]|1[0-2])$/u.test(code);
+  // Gamepad SKAL staa her: der findes ingen modifiers paa en controller, saa
+  // en gamepad-binding er altid bar. Uden linjen ville Rust acceptere
+  // "GamepadLT" mens frontenden kastede paa den samme streng.
+  return isNativeOnlyCode(code) || /^F([1-9]|1[0-2])$/u.test(code);
 }
 
 function migrateV1Token(token: string): string | null {
@@ -94,14 +136,14 @@ export function parseAccelerator(accel: string): ParsedAccelerator {
   }
   if (!ctrl && !shift && !alt && !allowsBare(code)) {
     throw new Error(
-      `${accel} kræver mindst én modifier — kun F1-F12 og musetaster må stå alene`,
+      `${accel} kræver mindst én modifier — kun F1-F12, musetaster og gamepad-knapper må stå alene`,
     );
   }
   return { ctrl, shift, alt, code };
 }
 
 export function isKeyboardBinding(accel: string): boolean {
-  return !MOUSE_CODES.includes(parseAccelerator(accel).code);
+  return !isNativeOnlyCode(parseAccelerator(accel).code);
 }
 
 let rightAltDown = false;
@@ -136,7 +178,10 @@ export function isRightAltDown(): boolean {
 export function matchesAccelerator(e: KeyboardEvent, accel: string): boolean {
   ensureRightAltTracking();
   const parsed = parseAccelerator(accel);
-  if (MOUSE_CODES.includes(parsed.code)) return false;
+  // Musetaster og gamepad-knapper kan per definition ikke matche et
+  // KeyboardEvent. Vagten er eksplicit frem for at hvile paa at `e.code`
+  // aldrig tilfaeldigvis er lig med et af vores egne tokens.
+  if (isNativeOnlyCode(parsed.code)) return false;
   if (rightAltDown) return false;
   const ctrlPressed = e.ctrlKey || e.metaKey;
   if (parsed.ctrl && !ctrlPressed) return false;

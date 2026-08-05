@@ -106,7 +106,8 @@ function savedSettings(): Record<string, unknown> {
 it("dikteringen har sin egen genvej og sin egen kontakt", async () => {
   await mount();
   expect(container.textContent).toContain("Diktering");
-  expect(container.querySelectorAll("[data-hotkey-change]").length).toBe(2);
+  // Fire optagere: primaer + alternativ for hver af de to genveje.
+  expect(container.querySelectorAll("[data-hotkey-change]").length).toBe(4);
   expect(container.querySelector("[data-dictation-submit]")).not.toBeNull();
 });
 
@@ -158,6 +159,37 @@ it("ENHVER gem-vej sender ogsaa dikterings-felterne", async () => {
   const settings = savedSettings();
   expect(settings.dictation_hotkey).toBe("CmdOrCtrl+Shift+KeyD");
   expect(settings.dictation_submit).toBe(false);
+  // Alt-felterne er omfattet af NOEJAGTIG samme regel: set_settings skriver
+  // hele dokumentet, saa udelades de, ville et hvilket som helst gem i en
+  // anden sektion slette brugerens alternative bindinger.
+  expect(settings).toHaveProperty("ptt_hotkey_alt");
+  expect(settings).toHaveProperty("dictation_hotkey_alt");
+});
+
+it("en gemt alt-binding overlever et gem fra en anden sektion", async () => {
+  mockWorkspace({ ptt_hotkey_alt: "GamepadLT" });
+  await mount();
+  const toggle = container.querySelector<HTMLInputElement>(
+    "[data-dictation-submit]",
+  )!;
+  act(() => toggle.click());
+  await act(async () => {});
+  expect(savedSettings().ptt_hotkey_alt).toBe("GamepadLT");
+});
+
+it("ryd paa alt-optageren sender null, ikke tom streng", async () => {
+  // "" er en parse-FEJL efter den delte grammatik. Sendte ryd-knappen den,
+  // ville brugeren faa en fejl for at have ryddet et felt.
+  mockWorkspace({ ptt_hotkey_alt: "GamepadLT" });
+  await mount();
+  const resets = container.querySelectorAll<HTMLButtonElement>(
+    "[data-hotkey-reset]",
+  );
+  const ryd = Array.from(resets).find((b) => b.textContent === "Ryd");
+  expect(ryd).toBeDefined();
+  act(() => ryd!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  await act(async () => {});
+  expect(savedSettings().ptt_hotkey_alt).toBeNull();
 });
 
 it("nulstil paa diktér-optageren skriver dens egen standard", async () => {

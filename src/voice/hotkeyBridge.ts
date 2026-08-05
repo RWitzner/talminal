@@ -28,10 +28,13 @@
 export type HotkeyEdge = "press" | "release";
 
 export interface HotkeyBridge {
-  /** DOM'ens keydown for komboen. */
-  domPress(): void;
+  /** DOM'ens keydown for komboen.
+   *
+   *  `binding` skiller slottets to bindinger fra hinanden (0 = primær,
+   *  1 = alternativ). Se ejerskabs-noten nedenfor. */
+  domPress(binding?: number): void;
   /** DOM'ens keyup for komboen. */
-  domRelease(): void;
+  domRelease(binding?: number): void;
   /** En kant fra Rust-polleren. */
   nativeEdge(edge: HotkeyEdge): void;
   /** Kaldes naar `configure_*_hotkey` er kvitteret: polleren fyrer nu. */
@@ -51,9 +54,19 @@ export function createHotkeyBridge(deps: {
   let nativeHasPrimacy = false;
   let nativeReady = false;
   let domActive = false;
+  // Hvilken af slottets to bindinger der ejer DOM-holdet.
+  //
+  // EJERSKAB, samme regel som `wake_hotkey::SlotArbiter` paa Rust-siden: en
+  // slot har to bindinger, men EEN mikrofon. Uden den her laas ville to
+  // keyboard-bindinger — begge registreret paa samme bridge — give to
+  // `onPress()` for ét hold, og STT-sessionen blev startet to gange.
+  //
+  // Kun ejeren kan lukke holdet. Slipper den ANDEN binding midt i et hold,
+  // holder brugeren stadig fysisk paa den foerste.
+  let domHeldBy: number | null = null;
 
   return {
-    domPress() {
+    domPress(binding = 0) {
       if (nativeHasPrimacy) {
         // Doede-tryk-diagnostik: DOM'en saa komboen, men polleren har
         // primatet. Fyrer polleren ikke tilsvarende, er Rust-gaten eller
@@ -61,13 +74,22 @@ export function createHotkeyBridge(deps: {
         deps.onDebug?.("voice.ptt.dom_saw_combo_native_primacy");
         return;
       }
+      if (domActive) {
+        // Den anden binding trykket midt i holdet — mikrofonen er allerede
+        // aaben.
+        deps.onDebug?.("voice.ptt.dom_second_binding_ignored");
+        return;
+      }
       domActive = true;
+      domHeldBy = binding;
       deps.onPress();
     },
 
-    domRelease() {
+    domRelease(binding = 0) {
       if (nativeHasPrimacy) return;
+      if (!domActive || domHeldBy !== binding) return;
       domActive = false;
+      domHeldBy = null;
       deps.onRelease();
       if (nativeReady) nativeHasPrimacy = true;
     },
@@ -77,6 +99,7 @@ export function createHotkeyBridge(deps: {
         if (edge === "release") {
           deps.onWarn?.("voice.ptt.dom_hold_stale_selfhealed");
           domActive = false;
+          domHeldBy = null;
           nativeHasPrimacy = true;
           deps.onRelease();
         }
