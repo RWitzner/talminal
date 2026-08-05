@@ -115,7 +115,18 @@ const GATES = [
       // Syntetiske fixture-UUIDer har otte ENS tegn i foerste gruppe. En aegte
       // Claude-/Codex-session-UUID har det ikke. Fase 1 erstattede den ene
       // aegte (`presence.rs`) med `00000000-0000-4000-8000-000000000001`.
-      /\b([0-9a-f])\1{7}-/i.test(linje),
+      /\b([0-9a-f])\1{7}-/i.test(linje) ||
+      // Windows COM-GUIDer er KONSTANTER fra SDK'et — `MMDeviceEnumerator`,
+      // `IAudioMeterInformation`, `PKEY_Device_FriendlyName` og deres lige.
+      // De er offentligt dokumenterede og identificerer et interface, ikke en
+      // koersel. VR-diagnostikken i `scripts/vr-diagnostics/` bruger 35 af dem,
+      // fordi PowerShell ikke kan caste `__ComObject` til et `[ComImport]`-
+      // interface og interoppen derfor maa skrives i C# via `Add-Type`.
+      //
+      // Undtagelsen er bundet til C#-interop-SYNTAKSEN og ikke til mappen: en
+      // GUID i en `[ComImport]`-attribut eller et `new Guid(...)`-kald kan ikke
+      // vaere et session-id, mens en loes UUID i den samme fil stadig fanges.
+      /\[ComImport|new Guid\(/.test(linje),
     hvorfor: "et aegte session-id knytter repoet til en konkret koersel hos ejeren",
   },
   {

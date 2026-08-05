@@ -84,6 +84,19 @@ pub struct Settings {
     /// Push-to-talk (hold nede = optag). Accelerator-streng i
     /// tauri-plugin-global-shortcut-format.
     pub ptt_hotkey: String,
+    /// Valgfri ANDEN binding til samme funktion — samme grammatik, samme slot.
+    ///
+    /// Findes fordi den samme funktion bruges to fysiske steder: en musetast
+    /// ved skrivebordet, en controller-trigger i headsettet. Uden den skulle
+    /// brugeren skifte binding i indstillingerne hver gang han tog headsettet
+    /// paa. Begge er aktive samtidig; polleren voldgifter mellem dem (se
+    /// `wake_hotkey::SlotArbiter`).
+    ///
+    /// `None` = ingen alternativ binding. IKKE tom streng: `""` er en
+    /// parse-FEJL efter den delte grammatik (`hotkey-grammar.fixtures.json`),
+    /// og begge lag tester det.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ptt_hotkey_alt: Option<String>,
     /// Exit fra type-mode (planens spec-afvigelse: "Shift+Escape" — enkelt-Esc
     /// gaar ALTID til terminalen, og Esc-Esc er en CC-binding).
     pub exit_type_mode_hotkey: String,
@@ -126,10 +139,25 @@ pub struct Settings {
     /// composer). Samme accelerator-grammatik som `ptt_hotkey`, men sin egen
     /// slot i polleren — se `wake_hotkey::HotkeySlot`.
     pub dictation_hotkey: String,
+    /// Valgfri anden dikterings-binding. Se `ptt_hotkey_alt`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dictation_hotkey_alt: Option<String>,
     /// Skal dikteringen selv sende, eller kun indsaette? Default er KUN
     /// indsaette: en fejlhoert saetning maa ikke kunne blive til en koert
     /// kommando uden at brugeren har set den foerst.
     pub dictation_submit: bool,
+}
+
+/// Tom/whitespace -> `None`.
+///
+/// Vagten findes fordi frontendens ryd-knap sender `""`, og fordi en
+/// haandredigeret settings.json kan indeholde `"   "`. Begge ville ellers naa
+/// `parse_accelerator`, som med rette afviser dem — brugeren ville faa en
+/// parse-fejl for at have ryddet et felt.
+fn normalize_alt_hotkey(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Default-PTT i "CmdOrCtrl+Space"-klassen (planens krav: implementer vaelger
@@ -189,6 +217,9 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             ptt_hotkey: DEFAULT_PTT_HOTKEY.to_string(),
+            // Ingen alternativ binding som udgangspunkt: den er noget brugeren
+            // tilfoejer naar han faktisk har to steder at trykke fra.
+            ptt_hotkey_alt: None,
             exit_type_mode_hotkey: DEFAULT_EXIT_TYPE_MODE_HOTKEY.to_string(),
             voice_engine: default_voice_engine(),
             wallpaper: default_wallpaper(),
@@ -196,6 +227,7 @@ impl Default for Settings {
             stt_provider: default_stt_provider(),
             routing_provider: default_routing_provider(),
             dictation_hotkey: DEFAULT_DICTATION_HOTKEY.to_string(),
+            dictation_hotkey_alt: None,
             dictation_submit: false,
             stt_keywords: default_stt_keywords(),
         }
@@ -441,6 +473,37 @@ pub fn load_settings() -> Settings {
 
 pub fn load_settings_checked() -> (Settings, Option<String>) {
     let mut settings = load_settings();
+    // Alt-bindingerne normaliseres FOER de valideres: `load_settings` roerer
+    // ikke hotkeys, saa en haandredigeret fil kan indeholde "" eller "   ",
+    // som ellers ville blive meldt som en parse-fejl for et felt brugeren har
+    // ryddet.
+    settings.ptt_hotkey_alt = normalize_alt_hotkey(settings.ptt_hotkey_alt);
+    settings.dictation_hotkey_alt = normalize_alt_hotkey(settings.dictation_hotkey_alt);
+    // En ulaeselig alt-binding droppes stille-tavst-med-advarsel frem for at
+    // vaelte hele hotkeyen: den er pr. definition den sekundaere vej, og den
+    // primaere skal stadig virke.
+    if let Some(alt) = settings.ptt_hotkey_alt.clone() {
+        if let Err(err) = crate::wake_hotkey::parse_accelerator(&alt) {
+            settings.ptt_hotkey_alt = None;
+            return (
+                settings,
+                Some(format!(
+                    "Den alternative voice-hotkey i settings.json kunne ikke laeses ({err}) — den er slaaet fra"
+                )),
+            );
+        }
+    }
+    if let Some(alt) = settings.dictation_hotkey_alt.clone() {
+        if let Err(err) = crate::wake_hotkey::parse_accelerator(&alt) {
+            settings.dictation_hotkey_alt = None;
+            return (
+                settings,
+                Some(format!(
+                    "Den alternative dikterings-hotkey i settings.json kunne ikke laeses ({err}) — den er slaaet fra"
+                )),
+            );
+        }
+    }
     if let Err(err) = crate::wake_hotkey::parse_accelerator(&settings.ptt_hotkey) {
         let warning = format!(
             "Voice-hotkeyen i settings.json kunne ikke laeses ({err}) — bruger standarden {DEFAULT_PTT_HOTKEY}"
@@ -649,6 +712,14 @@ pub fn get_workspace() -> Result<WorkspaceResponse, String> {
 #[serde(deny_unknown_fields)]
 pub struct SettingsInput {
     pub ptt_hotkey: String,
+    /// De to alt-felter er de ENESTE med en default paa skrive-siden.
+    ///
+    /// `deny_unknown_fields` afviser UKENDTE noegler, ikke manglende — en
+    /// felt-default er derfor forenelig med den, og de ni oevrige felters
+    /// strenghed er uroert. Uden defaulten ville enhver aeldre frontend-build
+    /// faa alle sine gem afvist.
+    #[serde(default)]
+    pub ptt_hotkey_alt: Option<String>,
     pub exit_type_mode_hotkey: String,
     pub voice_engine: String,
     pub wallpaper: String,
@@ -656,6 +727,8 @@ pub struct SettingsInput {
     pub stt_provider: String,
     pub routing_provider: String,
     pub dictation_hotkey: String,
+    #[serde(default)]
+    pub dictation_hotkey_alt: Option<String>,
     pub dictation_submit: bool,
     pub stt_keywords: Vec<String>,
 }
@@ -672,17 +745,54 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
     if exit.is_empty() {
         return Err("hotkey bindings must be non-empty".to_string());
     }
+    let ptt_alt = normalize_alt_hotkey(input.ptt_hotkey_alt);
+    let dictation_alt = normalize_alt_hotkey(input.dictation_hotkey_alt);
     let ptt_combo = crate::wake_hotkey::parse_accelerator(&ptt)?;
     let dictation_combo = crate::wake_hotkey::parse_accelerator(&dictation)?;
+    let ptt_alt_combo = ptt_alt
+        .as_deref()
+        .map(crate::wake_hotkey::parse_accelerator)
+        .transpose()?;
+    let dictation_alt_combo = dictation_alt
+        .as_deref()
+        .map(crate::wake_hotkey::parse_accelerator)
+        .transpose()?;
     // Kollision er IKKE lighed: polleren og DOM'en matcher begge en kombo paa
     // SUBSET af modifiers, saa et Ctrl+Shift+Space-tryk fyrer baade
     // `Ctrl+Space` og `Ctrl+Shift+Space`. Reglen bor i wake_hotkey.rs sammen
     // med den semantik den udleder sig af.
-    if crate::wake_hotkey::collides(&ptt_combo, &dictation_combo) {
-        return Err(
-            "stemme-aktivering og diktering maa ikke bruge samme tast — vaelg to forskellige"
-                .to_string(),
-        );
+    //
+    // Med to bindinger pr. slot er der op til fire genveje, altsaa SEKS par:
+    // to inden for hver slot og fire paa tvaers. De to typer faar hver sin
+    // tekst — ellers kan brugeren ikke se HVILKE to felter der kolliderer.
+    // Begge beholder delstrengen "samme tast".
+    if let Some(alt) = ptt_alt_combo {
+        if crate::wake_hotkey::collides(&ptt_combo, &alt) {
+            return Err(
+                "stemme-aktiveringens to genveje maa ikke bruge samme tast — vaelg to forskellige"
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(alt) = dictation_alt_combo {
+        if crate::wake_hotkey::collides(&dictation_combo, &alt) {
+            return Err(
+                "dikteringens to genveje maa ikke bruge samme tast — vaelg to forskellige"
+                    .to_string(),
+            );
+        }
+    }
+    let ptt_all = [Some(ptt_combo), ptt_alt_combo];
+    let dictation_all = [Some(dictation_combo), dictation_alt_combo];
+    for a in ptt_all.iter().flatten() {
+        for b in dictation_all.iter().flatten() {
+            if crate::wake_hotkey::collides(a, b) {
+                return Err(
+                    "stemme-aktivering og diktering maa ikke bruge samme tast — vaelg to forskellige"
+                        .to_string(),
+                );
+            }
+        }
     }
     if engine != "pipeline" {
         return Err("voice_engine must be \"pipeline\"".to_string());
@@ -721,6 +831,7 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
     }
     save_settings(&Settings {
         ptt_hotkey: ptt,
+        ptt_hotkey_alt: ptt_alt,
         exit_type_mode_hotkey: exit,
         voice_engine: engine,
         wallpaper,
@@ -728,6 +839,7 @@ pub fn set_settings(input: SettingsInput) -> Result<(), String> {
         stt_provider,
         routing_provider,
         dictation_hotkey: dictation,
+        dictation_hotkey_alt: dictation_alt,
         dictation_submit: input.dictation_submit,
         // Skrive-siden er ellers STRENG og afviser hvad den ikke kan lide, men
         // et keyword har ingen "gyldig"-definition — kun tegn API'et forbyder.

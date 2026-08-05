@@ -71,6 +71,22 @@ async function saveSettingsPatch(
         patch.dictation_hotkey ??
         current.dictation_hotkey ??
         DEFAULT_DICTATION_HOTKEY,
+      // Alt-bindingerne SKAL med i hver eneste gem-vej — set_settings skriver
+      // hele dokumentet, saa en udeladt alt-binding ville blive slettet af et
+      // hvilket som helst gem i en anden sektion.
+      //
+      // `in` og IKKE `??`: her betyder `null` "ryd", og `??` falder igennem
+      // paa netop `null`. Med `??` kunne en ryddet binding aldrig gemmes —
+      // den ville hver gang falde tilbage til den vaerdi brugeren lige slettede.
+      // Samme faelde som `dictation_submit` og `false` nedenfor.
+      ptt_hotkey_alt:
+        "ptt_hotkey_alt" in patch
+          ? patch.ptt_hotkey_alt ?? null
+          : current.ptt_hotkey_alt ?? null,
+      dictation_hotkey_alt:
+        "dictation_hotkey_alt" in patch
+          ? patch.dictation_hotkey_alt ?? null
+          : current.dictation_hotkey_alt ?? null,
       // `??` og ikke `||`: `false` er en gyldig vaerdi og maa ikke falde
       // igennem til current.
       dictation_submit:
@@ -404,6 +420,7 @@ function doubleEffectNote(accel: string): string | null {
 
 function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
   const [ptt, setPtt] = useState(DEFAULT_PTT_HOTKEY);
+  const [pttAlt, setPttAlt] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -414,6 +431,7 @@ function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
       .then((ws) => {
         if (!alive || ws.settings == null) return;
         setPtt(ws.settings.ptt_hotkey);
+        setPttAlt(ws.settings.ptt_hotkey_alt ?? "");
       })
       .catch((err) => {
         // Workspace ikke loaded (fx foer startup_load): behold defaults.
@@ -446,6 +464,30 @@ function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
     }
   };
 
+  // Ryd sender `null` og IKKE "": tom streng er en parse-fejl efter den delte
+  // grammatik, saa den maa aldrig naa Rust-siden som en binding.
+  const saveAlt = async (accel: string | null) => {
+    if (busy) return;
+    const previous = pttAlt;
+    setPttAlt(accel ?? "");
+    setBusy(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await saveSettingsPatch({
+        ptt_hotkey_alt: accel,
+        voice_engine: "pipeline",
+      });
+      await onSaved?.();
+      setSaved(true);
+    } catch (err) {
+      setPttAlt(previous);
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const note = doubleEffectNote(ptt);
 
   return (
@@ -465,6 +507,18 @@ function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
         disabled={busy}
       />
       {note !== null && <div style={styles.hint}>{note}</div>}
+      <div style={styles.rowLead}>
+        Ekstra genvej — begge virker samtidig. Til fx en controller-trigger, saa
+        den samme funktion kan naas baade fra skrivebordet og fra et headset.
+      </div>
+      <HotkeyRecorder
+        value={pttAlt}
+        onChange={(accel) => saveAlt(accel)}
+        onReset={pttAlt === "" ? undefined : () => void saveAlt(null)}
+        resetLabel="Ryd"
+        emptyLabel="Ingen ekstra"
+        disabled={busy}
+      />
       {error !== null && <div style={styles.error}>{error}</div>}
     </div>
   );
@@ -478,6 +532,7 @@ function HotkeySection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
 
 function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> }) {
   const [hotkey, setHotkey] = useState(DEFAULT_DICTATION_HOTKEY);
+  const [hotkeyAlt, setHotkeyAlt] = useState("");
   const [submit, setSubmit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -489,6 +544,7 @@ function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> })
       .then((ws) => {
         if (!alive || ws.settings == null) return;
         setHotkey(ws.settings.dictation_hotkey ?? DEFAULT_DICTATION_HOTKEY);
+        setHotkeyAlt(ws.settings.dictation_hotkey_alt ?? "");
         setSubmit(ws.settings.dictation_submit === true);
       })
       .catch((err) => {
@@ -501,11 +557,17 @@ function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> })
 
   const save = async (patch: {
     dictation_hotkey?: string;
+    // `null` = ryd, `undefined` = urørt — derfor `in`-tjekket nedenfor og
+    // ikke `!== undefined`: `null` skal kunne skrives igennem.
+    dictation_hotkey_alt?: string | null;
     dictation_submit?: boolean;
   }) => {
     if (busy) return;
-    const previous = { hotkey, submit };
+    const previous = { hotkey, hotkeyAlt, submit };
     if (patch.dictation_hotkey !== undefined) setHotkey(patch.dictation_hotkey);
+    if ("dictation_hotkey_alt" in patch) {
+      setHotkeyAlt(patch.dictation_hotkey_alt ?? "");
+    }
     if (patch.dictation_submit !== undefined) setSubmit(patch.dictation_submit);
     setBusy(true);
     setSaved(false);
@@ -518,6 +580,7 @@ function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> })
       // Rust afviser bl.a. en genvej der deler tast med stemme-aktiveringen
       // (wake_hotkey::collides). Fejlteksten er brugervendt og vises ordret.
       setHotkey(previous.hotkey);
+      setHotkeyAlt(previous.hotkeyAlt);
       setSubmit(previous.submit);
       setError(String(err));
     } finally {
@@ -544,6 +607,21 @@ function DictationSection({ onSaved }: { onSaved?: () => void | Promise<void> })
         disabled={busy}
       />
       {note !== null && <div style={styles.hint}>{note}</div>}
+      <div style={styles.rowLead}>
+        Ekstra genvej — begge virker samtidig.
+      </div>
+      <HotkeyRecorder
+        value={hotkeyAlt}
+        onChange={(accel) => save({ dictation_hotkey_alt: accel })}
+        onReset={
+          hotkeyAlt === ""
+            ? undefined
+            : () => void save({ dictation_hotkey_alt: null })
+        }
+        resetLabel="Ryd"
+        emptyLabel="Ingen ekstra"
+        disabled={busy}
+      />
       <label style={styles.toggleRow}>
         <input
           type="checkbox"

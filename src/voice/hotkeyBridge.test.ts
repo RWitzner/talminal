@@ -14,6 +14,53 @@ function makeBridge() {
   return { bridge, calls, debug, warn };
 }
 
+describe("createHotkeyBridge — to bindinger, én mikrofon", () => {
+  it("aabner ikke mikrofonen to gange naar begge bindinger trykkes", () => {
+    // En slot kan have to keyboard-bindinger, og BEGGE registrerer sig paa den
+    // samme bridge. Uden ejerskabslaasen ville ét hold give to onPress, og
+    // STT-sessionen blev startet to gange.
+    const h = makeBridge();
+    h.bridge.domPress(0);
+    h.bridge.domPress(1);
+    expect(h.calls).toEqual(["press"]);
+    expect(h.debug).toContain("voice.ptt.dom_second_binding_ignored");
+  });
+
+  it("lader kun EJEREN lukke holdet", () => {
+    // Slipper den anden binding midt i holdet, holder brugeren stadig fysisk
+    // paa den foerste — et release her ville afbryde midt i en saetning.
+    const h = makeBridge();
+    h.bridge.domPress(0);
+    h.bridge.domPress(1);
+    h.bridge.domRelease(1);
+    expect(h.calls).toEqual(["press"]);
+    h.bridge.domRelease(0);
+    expect(h.calls).toEqual(["press", "release"]);
+  });
+
+  it("lader den anden binding eje et NYT hold", () => {
+    const h = makeBridge();
+    h.bridge.domPress(0);
+    h.bridge.domRelease(0);
+    h.calls.length = 0;
+    h.bridge.domPress(1);
+    h.bridge.domRelease(1);
+    expect(h.calls).toEqual(["press", "release"]);
+  });
+
+  it("selvhealingen rydder ogsaa ejerskabet", () => {
+    // En native release under aktivt DOM-hold beviser at DOM'ens keyup gik
+    // tabt. Blev ejerskabet staaende, ville den binding aldrig kunne fyre igen.
+    const h = makeBridge();
+    h.bridge.domPress(1);
+    h.bridge.nativeEdge("release");
+    expect(h.calls).toEqual(["press", "release"]);
+    h.calls.length = 0;
+    h.bridge.nativeEdge("press");
+    expect(h.calls).toEqual(["press"]);
+  });
+});
+
 describe("createHotkeyBridge", () => {
   it("lader DOM'en foere indtil polleren er klar", () => {
     const h = makeBridge();

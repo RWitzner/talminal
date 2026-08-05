@@ -827,6 +827,13 @@ export default function App() {
     workspace?.settings?.ptt_hotkey?.trim() || DEFAULT_VOICE_HOTKEY;
   const dictationHotkey =
     workspace?.settings?.dictation_hotkey?.trim() || DEFAULT_DICTATION_HOTKEY;
+  // `|| null` og IKKE `|| DEFAULT`: alt-bindingerne har ingen default. En tom
+  // streng betyder "ryddet", og den maa aldrig naa parse-laget — `""` er en
+  // parse-fejl efter den delte grammatik, ikke en maade at sige "ingen".
+  const voiceHotkeyAlt =
+    workspace?.settings?.ptt_hotkey_alt?.trim() || null;
+  const dictationHotkeyAlt =
+    workspace?.settings?.dictation_hotkey_alt?.trim() || null;
   // Via ref og IKKE via effektens deps: stemme-effekten river hele motoren ned
   // og bygger den op igen naar dens deps skifter (pipeline.stop(),
   // player.close(), alle lyttere af- og paamonteres). Laa flaget i deps, ville
@@ -1183,26 +1190,51 @@ export default function App() {
       });
 
       let unlistenNativePtt: UnlistenFn | null = null;
-      try {
-        if (isKeyboardBinding(voiceHotkey)) {
-          unregisterWake = registerPttKey(voiceHotkey, {
-            onPress: () => pttBridge.domPress(),
-            onRelease: () => pttBridge.domRelease(),
+      // Hver binding faar sit EGET try/catch. Laa de i samme blok, ville en
+      // ulaeselig alternativ binding ogsaa rive den primaeres DOM-registrering
+      // med sig — og den primaere er den brugeren faktisk trykker paa.
+      const registerBinding = (
+        accel: string | null,
+        binding: number,
+        bridge: { domPress(b?: number): void; domRelease(b?: number): void },
+        label: string,
+      ): (() => void) | null => {
+        if (!accel) return null;
+        try {
+          if (!isKeyboardBinding(accel)) return null;
+          return registerPttKey(accel, {
+            onPress: () => bridge.domPress(binding),
+            onRelease: () => bridge.domRelease(binding),
           });
+        } catch (error) {
+          updateHud({ error: `${label} fejlede: ${String(error)}` });
+          return null;
         }
-      } catch (error) {
-        updateHud({ error: `Voice-hotkey fejlede: ${String(error)}` });
-      }
-      try {
-        if (isKeyboardBinding(dictationHotkey)) {
-          unregisterDictation = registerPttKey(dictationHotkey, {
-            onPress: () => dictationBridge.domPress(),
-            onRelease: () => dictationBridge.domRelease(),
-          });
-        }
-      } catch (error) {
-        updateHud({ error: `Diktér-hotkey fejlede: ${String(error)}` });
-      }
+      };
+      const unregisterWakeAlt = registerBinding(
+        voiceHotkeyAlt,
+        1,
+        pttBridge,
+        "Alternativ voice-hotkey",
+      );
+      const unregisterDictationAlt = registerBinding(
+        dictationHotkeyAlt,
+        1,
+        dictationBridge,
+        "Alternativ diktér-hotkey",
+      );
+      unregisterWake = registerBinding(
+        voiceHotkey,
+        0,
+        pttBridge,
+        "Voice-hotkey",
+      );
+      unregisterDictation = registerBinding(
+        dictationHotkey,
+        0,
+        dictationBridge,
+        "Diktér-hotkey",
+      );
 
       void (async () => {
         try {
@@ -1226,9 +1258,15 @@ export default function App() {
             return;
           }
           unlistenNativePtt = unlisten;
-          await invoke("configure_wake_hotkey", { accel: voiceHotkey });
+          await invoke("configure_wake_hotkey", {
+            accel: voiceHotkey,
+            alt: voiceHotkeyAlt,
+          });
           pttBridge.markNativeReady();
-          await invoke("configure_dictation_hotkey", { accel: dictationHotkey });
+          await invoke("configure_dictation_hotkey", {
+            accel: dictationHotkey,
+            alt: dictationHotkeyAlt,
+          });
           dictationBridge.markNativeReady();
         } catch (error) {
           updateHud({
@@ -1260,12 +1298,22 @@ export default function App() {
       unlistenNativePtt?.();
       unregisterWake?.();
       unregisterDictation?.();
+      unregisterWakeAlt?.();
+      unregisterDictationAlt?.();
       window.removeEventListener("blur", onVoiceBlur);
       dictation.cancel();
       void sounds.close();
       void pipeline.stop().finally(() => player.close());
     };
-  }, [activeVoiceEngine, dictationHotkey, refresh, voiceHotkey, voiceReady]);
+  }, [
+    activeVoiceEngine,
+    dictationHotkey,
+    dictationHotkeyAlt,
+    refresh,
+    voiceHotkey,
+    voiceHotkeyAlt,
+    voiceReady,
+  ]);
 
   return (
     <AppShell

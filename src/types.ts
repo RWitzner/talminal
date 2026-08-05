@@ -90,6 +90,14 @@ export interface WorkspaceSettings {
    *  settings.json fra før feltet fandtes leverer det ikke, og fladen falder
    *  tilbage til `DEFAULT_DICTATION_HOTKEY`. */
   dictation_hotkey?: string;
+  /** Valgfri ANDEN binding til samme funktion — mus ved skrivebordet,
+   *  controller i headsettet. Begge er aktive samtidig.
+   *
+   *  `| null` og ikke bare `?`: Rust-siden er `Option<String>`, som serde
+   *  serialiserer til `null`. Udeladt betyder "en ældre settings.json",
+   *  `null` betyder "ryddet" — for fladen er de det samme. */
+  ptt_hotkey_alt?: string | null;
+  dictation_hotkey_alt?: string | null;
   /** Skal dikteringen selv trykke Enter? Default (og udeladt) er `false`. */
   dictation_submit?: boolean;
   /** Brugerens egne STT-keywords. Optional af samme grund som felterne

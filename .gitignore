@@ -16,3 +16,17 @@ captures/
 # tarballen (files-allowlisten tager dem med trods gitignore). 19 MB hoerer
 # ikke hjemme i en offentlig historik.
 vendor/
+
+# Implementeringsplaner er arbejdsnoter, ikke kildekode: de er skrevet FOER
+# arbejdet, og naar det er landet, staar de tilbage som en beskrivelse af
+# noget der maaske blev bygget anderledes. Historikken og docs/ARCHITECTURE.md
+# er den kilde der bliver ved med at passe.
+#
+# Reglen kom af at de blev committet ved et uheld to gange paa én dag — én
+# gang direkte, og én gang hvor et andet spors plan blev fejet med af et
+# `git add -A`.
+#
+# `docs/specs/` findes ikke i dag; reglen staar forebyggende, fordi specs er
+# samme slags dokument — skrevet foer koden, og overhalet af den.
+docs/plans/
+docs/specs/
